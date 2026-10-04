@@ -1,6 +1,15 @@
-# Support Orchestrator — multi-agent customer-support system
+# Orbit Support — a multi-agent customer-support system you can actually trust
 
-**LangGraph · FastAPI · Langfuse · Pydantic · NVIDIA NIM (free API)** — built to be *measurably* accurate, guarded and fast, and honest about all three.
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue) ![tests](https://img.shields.io/badge/tests-141%20offline%20%2B%2041%20live-brightgreen)
+
+### 🔗 **[Live demo → orbit-support.onrender.com](https://orbit-support.onrender.com)** · [API docs](https://orbit-support.onrender.com/docs)
+
+Pick a demo account (a double-charged customer, a failed payment, a refund that needs human approval…) and chat. Sign in as **Support staff** to approve/edit/reject the AI's drafts in the review queue. Try the **Guardrail lab** to fire real prompt-injection / SQL-injection / data-theft attempts at it.
+> The demo runs on Render's free tier: the first request after idle takes ~30–60 s to wake up, and answers take ~8 s because the free NVIDIA endpoint is slow. All data is **synthetic**.
+
+**What it is:** a dispatcher routes each message; billing / technical / general specialists and an escalation agent work in parallel with real tools (invoices, refund policy engine, logs, KB search); a validator checks every amount, id, date and claim against the evidence before the customer sees it; risky or uncertain cases pause in a human review queue and resume when staff resolve them. Built for **accuracy, guardrails and latency**, with every claim measured (see [Results](#results-at-a-glance-details-and-caveats-reportsindexmd)).
+
+**Stack:** LangGraph · FastAPI · Pydantic · Langfuse (optional) · NVIDIA NIM (free API) · SQLite/SQLAlchemy · vanilla-JS UI. Built to be *measurably* accurate, guarded and fast, and honest about all three.
 
 A customer message (REST or Slack) goes through input guardrails → a **dispatcher** that routes it → up to two **specialists** (billing, technical, general) and/or an **escalation** agent running **in parallel** → a **validator** (deterministic grounding checks + LLM faithfulness judge) → either the customer, a revision, or a **human review queue** where the LangGraph run is *paused* until staff resolve it. Everything is traced (local JSONL + Langfuse) with PII masked.
 
@@ -18,6 +27,10 @@ A customer message (REST or Slack) goes through input guardrails → a **dispatc
 | audit the validator's decisions | `logs/validator_audit.jsonl`, `reports/eval_runs/full/logs/validator_audit.jsonl` |
 | see blocked attacks | `logs/security_events.jsonl` |
 | see where time went for one query | `python scripts/trace_view.py --last 3` |
+
+## Run it locally
+
+(Kaggle datasets used for evaluation are downloaded separately with the Kaggle CLI into `data/raw/`; the app itself and the offline tests do not need them.)
 
 ## Quick start
 
@@ -86,3 +99,11 @@ SQLite + in-process rate limiter/cache are single-process (use Postgres/Redis fo
 ## Web UI & deployment
 
 `/app/` (the API redirects `/` there) is a no-build single-page UI: customer chat with live pipeline progress, a "how this was answered" trace, a staff review-queue screen (approve / edit / reject resumes the paused graph), and a guardrail lab. Set `DEMO_MODE=true` to show one-click synthetic demo logins (never with real data); set `CORS_ORIGINS` only if you host the UI on another origin. Deploy to Render with `render.yaml` (Blueprint) and set `NVIDIA_API_KEY` in the dashboard.
+
+## Deploy your own
+
+`render.yaml` is a Blueprint: fork the repo, then in Render choose **New → Blueprint**, select the fork and set `NVIDIA_API_KEY`. The UI is served by the same service at `/app/`. For a separate Vercel-hosted UI, set `window.API_BASE` in `frontend/index.html` and `CORS_ORIGINS` on the backend.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Datasets referenced for evaluation (Bitext, multilingual tickets, prompt-injection and SQLi corpora from Kaggle) keep their own licenses and are not redistributed here.
