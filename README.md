@@ -1,112 +1,93 @@
-# Orbit Support — a multi-agent customer-support system you can actually trust
+# Orbit Support: a multi-agent customer-support system you can audit
 
-[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue) ![tests](https://img.shields.io/badge/tests-141%20offline%20%2B%2041%20live-brightgreen)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE) ![python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue) ![tests](https://img.shields.io/badge/tests-145%20offline%20%2B%2042%20live-brightgreen)
 
-### 🔗 **[Live demo → orbit-support.onrender.com](https://orbit-support.onrender.com)** · [API docs](https://orbit-support.onrender.com/docs)
+**[Live console](https://orbit-support-ui.vercel.app)** (Vercel) · **[API](https://orbit-support.onrender.com/docs)** (Render) · all data is synthetic
+> Free tier: the first request after idle takes 30-60 s to wake. Answers take ~8 s because the free NVIDIA endpoint is slow.
 
-Pick a demo login (each has different test data: a double charge, a failed payment, a large refund…) and write anything: the agent works out the problem from your message, not from the login. Sign in as **Support staff** to approve/edit/reject the AI's drafts in the review queue. Try the **Guardrail lab** to fire real prompt-injection / SQL-injection / data-theft attempts at it.
-> The demo runs on Render's free tier: the first request after idle takes ~30–60 s to wake up, and answers take ~8 s because the free NVIDIA endpoint is slow. All data is **synthetic**.
+![Console: a duplicate-charge refund handled live](docs/img/console.png)
 
-**What it is:** a dispatcher routes each message; billing / technical / general specialists and an escalation agent work in parallel with real tools (invoices, refund policy engine, logs, KB search); a validator checks every amount, id, date and claim against the evidence before the customer sees it; risky or uncertain cases pause in a human review queue and resume when staff resolve them. Built for **accuracy, guardrails and latency**, with every claim measured (see [Results](#results-at-a-glance-details-and-caveats-reportsindexmd)).
+## What it is
 
-**Stack:** LangGraph · FastAPI · Pydantic · Langfuse (optional) · NVIDIA NIM (free API) · SQLite/SQLAlchemy · vanilla-JS UI. Built to be *measurably* accurate, guarded and fast, and honest about all three.
+An AI support team for a SaaS product. A customer writes in; the system works out the problem, uses real tools (invoices, refund policy, logs, knowledge base), checks its own answer, and hands anything risky to a human.
 
-A customer message (REST or Slack) goes through input guardrails → a **dispatcher** that routes it → up to two **specialists** (billing, technical, general) and/or an **escalation** agent running **in parallel** → a **validator** (deterministic grounding checks + LLM faithfulness judge) → either the customer, a revision, or a **human review queue** where the LangGraph run is *paused* until staff resolve it. Everything is traced (local JSONL + Langfuse) with PII masked.
+- **Dispatcher** routes the message (billing, technical, general, escalation, off-topic).
+- **Billing / technical / general specialists** run in parallel with tools; an **escalation agent** files cases for humans.
+- **Validator** checks every amount, id, date and claim against the evidence before the customer sees it.
+- **Human review queue**: the LangGraph run pauses until staff approve, edit or reject (web console or Slack), then resumes.
+- **Live console**: conversation, agent network, execution trace, tool calls, security layer, "explain this execution", escalation desk.
 
-> The company ("Orbit"), its customers, invoices and knowledge base are **synthetic**. Nothing here is real customer data.
+Stack: LangGraph · FastAPI · Pydantic · SQLite · NVIDIA NIM (free API) · Langfuse (optional) · vanilla-JS UI.
 
-## Where to look (for manual checking)
+## Results (measured; caveats in [`reports/INDEX.md`](reports/INDEX.md))
 
-| I want to… | open |
+| | result |
 |---|---|
-| see every measured number | [`reports/INDEX.md`](reports/INDEX.md) |
-| know **every guardrail / method** and which test proves it | [`docs/guardrails.md`](docs/guardrails.md) |
-| see **what the system is responsible for** (tasks, workflows, tools, agent boundaries, state, trust boundaries, security policies, failure & escalation behaviour) | [`docs/support-scope.md`](docs/support-scope.md), or the **Scope & design** tab in the UI |
-| understand the design | [`docs/architecture.md`](docs/architecture.md) |
-| read real incidents + how traces found them | [`docs/debugging-case-studies.md`](docs/debugging-case-studies.md) |
-| see what went wrong in the eval, case by case | `reports/04_eval_full.md` (failures section) and `reports/eval_runs/full/results.jsonl` |
-| audit the validator's decisions | `logs/validator_audit.jsonl`, `reports/eval_runs/full/logs/validator_audit.jsonl` |
-| see blocked attacks | `logs/security_events.jsonl` |
-| see where time went for one query | `python scripts/trace_view.py --last 3` |
+| Accuracy, unbiased | **90.0 %** (63/70) on a hold-out set written after tuning stopped, first pass. It exposed a 72 % refund-request recall gap; after the fix 94.3 %, no longer independent |
+| Accuracy, tuned | 98.1 % (255/260) on the golden set. Optimistic: it was used while tuning |
+| Refund decisions · escalation recall · routing | 100 % · 100 % · 99.2 % (golden) |
+| Adversarial inputs | **58/58** injection, SQLi, cross-customer, refund-bypass and secret attempts ended safely; 0 leaks; 0 false positives on 28 benign look-alikes and 600 real support messages |
+| Unsupported claims | independent judge flagged 7.1 % of 112 replies (golden), 0 % of 42 (hold-out first pass) |
+| Latency, one user, live model | **p50 7.8 s, p95 20.4 s**. Blocked input ~11 ms, off-topic < 1 s. The < 2 s goal is **not met**: the free API is the bottleneck |
+| Load, mock LLM | 100 users with think time: p50 0.9 s, p95 3.6 s, 0 errors. 20 % of LLM calls failing: 0 server errors, every customer answered. 500 queries in 51 s |
+| Scale of the work | ~5,500 lines of app code · 50 numbered guardrails · 187 tests · 330 eval cases · 43 KB pages · 17 traced incidents written up |
 
-## Run it locally
+## What is novel
 
-(Kaggle datasets used for evaluation are downloaded separately with the Kaggle CLI into `data/raw/`; the app itself and the offline tests do not need them.)
+- **Policy as code, language as LLM.** Refund eligibility (30-day monthly, 14-day annual, 90-day duplicate, $100 auto-approval limit) is a deterministic, unit-tested engine. The model phrases the answer; it never decides money.
+- **Intent-gated writes.** `create_refund_request` and `create_ticket` run only if the customer's own message asks for it *and* the dispatcher agrees. A prompt injection cannot make the agent issue a refund.
+- **Two-layer validator, fail-closed.** Deterministic grounding (every figure must appear in tool output) plus an independent LLM judge. Unsure or unreachable means a human sees it, never the customer.
+- **Humans are inside the graph.** `interrupt()` plus a checkpointer: staff approval resumes the *same* run and updates the customer's chat.
+- **Identity the model cannot choose.** `customer_id` comes from the JWT and is injected into every tool call. Tools are allow-listed per agent.
+- **Built for a flaky free API.** Hedged requests, a circuit breaker for dead models, a fallback chain that never applies to the validator, and an answer cache. The breaker was added when NVIDIA retired the primary model mid-project (HTTP 410).
+- **Glass-box UI.** The console runs on real server-sent trace events (agent, tool and guardrail steps, PII-masked, no prompt text), not an animation.
+- **Honest evaluation.** A frozen golden set, a hold-out written afterwards, first-pass numbers reported, every failure listed case by case, and earlier runs kept as an audit trail.
 
-## Quick start
+## Who can use it
 
-```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp .env.example .env            # put NVIDIA_API_KEY=nvapi-... in it (never commit it)
-make seed                       # synthetic backend (200 customers, 879 invoices, edge cases) + golden dataset
-make test                       # 141 offline tests: unit + guardrails + graph (mock LLM) + API + Slack
-make live-test                  # 41 acceptance tests against the real NVIDIA API (per agent)
-make run                        # API on :8000  (docs at /docs)
-```
+- Teams building or reviewing a support agent for billing and technical issues, as a reference for guardrails and human handoff.
+- Support leads judging how much to automate: the review queue, escalation rules and refund limits are visible and configurable.
+- Engineers and students learning LangGraph fan-out, `interrupt()`, tool safety and evaluation.
+- Security and QA reviewers: attack corpora, a security-event log and a validator audit log are included.
 
-```bash
-# get a token (demo credentials are written to data/demo_credentials.json by the seed; git-ignored)
-CID=CUST-000111; SECRET=$(python3 -c "import json;print(json.load(open('data/demo_credentials.json'))['$CID'])")
-TOKEN=$(curl -s localhost:8000/auth/token -H 'content-type: application/json' -d "{\"client_id\":\"$CID\",\"client_secret\":\"$SECRET\"}" | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
-curl -s localhost:8000/v1/query -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"message":"Why did my last payment fail?"}'
-```
+Not production-ready as is: no payment processor behind refunds, synthetic data, single-process rate limiter, free-tier latency. See [limitations](docs/reference.md#known-limitations).
 
-| endpoint | purpose |
+## Proof
+
+| claim | evidence |
 |---|---|
-| `POST /auth/token` | client id + secret → JWT (roles: customer, agent_staff, admin) |
-| `POST /v1/query` | submit a query (`wait:false` → 202 + poll). Identity comes from the token only |
-| `GET /v1/query/{id}` · `POST /v1/query/stream` | status/result · SSE progress |
-| `GET /v1/review-queue` · `POST /v1/review-queue/{id}/resolve` | staff: list / approve · edit · reject (resumes the paused graph) |
-| `POST /slack/events` · `/slack/interactions` | Slack Events API + review buttons (signature-verified) |
-| `GET /healthz` · `/metrics` | health · Prometheus |
+| 98.1 % golden | [`reports/04_eval_full.md`](reports/04_eval_full.md) · every case in `reports/eval_runs/full/results.jsonl` |
+| 90.0 % unbiased | [`reports/04_eval_holdout_FIRSTPASS_unbiased.md`](reports/04_eval_holdout_FIRSTPASS_unbiased.md) |
+| Guardrails | [`reports/02_guardrails.md`](reports/02_guardrails.md) (detector rates on Kaggle corpora) · [`docs/guardrails.md`](docs/guardrails.md) (each guardrail and the test that proves it) |
+| Latency per stage | [`reports/04_eval_latency.md`](reports/04_eval_latency.md) |
+| Load and chaos | [`reports/06_load_test.md`](reports/06_load_test.md) |
+| Retrieval | [`reports/01_kb_retrieval.md`](reports/01_kb_retrieval.md): recall@1 1.00 on 47 handwritten queries, 0.88 on 76 Bitext |
+| What went wrong and how traces found it | [`docs/debugging-case-studies.md`](docs/debugging-case-studies.md) |
+| Design and scope | [`docs/support-scope.md`](docs/support-scope.md) · [`docs/architecture.md`](docs/architecture.md) · "Scope & design" tab in the UI |
 
-Staff demo logins (`staff-alice`, `admin`) are in `data/demo_credentials.json` too.
-
-## Configuration
-
-`.env` (see `.env.example`): `NVIDIA_API_KEY`, `JWT_SECRET`, optional `LANGFUSE_PUBLIC_KEY/SECRET_KEY/HOST` (without keys traces go to `logs/traces/*.jsonl` only), optional `SLACK_BOT_TOKEN`/`SLACK_SIGNING_SECRET` (without a token outgoing Slack messages go to `logs/slack_outbox.jsonl`). Default model: `nvidia/nemotron-3-ultra-550b-a55b` (the original `nemotron-3-super-120b` was retired by NVIDIA on 2026-10-03). Models, thresholds, rate limits and latency knobs are all in `app/core/config.py` and overridable by env var (e.g. `SPECIALIST_MODEL`, `VALIDATOR_THINKING=true`, `MERGE_MODE=llm`, `MAX_REVISIONS`, `REFUND_AUTO_LIMIT_USD`).
-
-`LLM_MODE=mock` runs the whole system with a deterministic fake LLM (offline tests, CI, load tests).
-
-## Evaluation methodology (how the numbers are produced)
-
-1. **Golden dataset** — `evals/golden.jsonl`, 260 cases built by `evals/build_golden.py` from three non-LLM ground truths: the seed manifest (invoice ids, amounts, failure reasons, days since payment…), the knowledge-base pages, and Kaggle corpora (Bitext support phrasing, prompt-injection/jailbreak sets, SQLi set).
-2. **Deterministic checks** — required facts (regex), forbidden claims, DB side-effects (refund created? status? ticket? review row & priority?), routing, leak patterns.
-3. **Independent faithfulness judge** (`--judge`) — separate prompt, reference = the customer's real DB rows + KB chunks retrieved from the *reply*, not from the agent's evidence.
-4. **Honest reporting** — failures are listed case by case in the report. Label noise in the Kaggle-derived routing sets is documented.
+Check it yourself:
 
 ```bash
-make eval          # live LLM, ~30 min on the free key -> reports/04_eval_full.md
-make guardrails    # reports/02_guardrails.md      make load   # reports/06_load_test.md
+python3 -c "import json;r=[json.loads(l) for l in open('reports/eval_runs/full/results.jsonl')];print(sum(x['pass'] for x in r),'/',len(r))"                # 255 / 260
+python3 -c "import json;r=[json.loads(l) for l in open('reports/eval_runs/holdout_firstpass/results.jsonl')];print(sum(x['pass'] for x in r),'/',len(r))"   # 63 / 70
+make test                                  # 145 offline tests
+python scripts/trace_view.py --last 3      # where the time went, per node
 ```
 
-## Results at a glance (details and caveats: [`reports/INDEX.md`](reports/INDEX.md))
+**A real run.** Golden case `billing_double_refund-001` (in `results.jsonl`): *"I was charged twice, please refund the duplicate charge."* The billing agent read the invoices, the policy engine returned eligible, the refund was filed, the validator approved at 99.5 % confidence, and the customer got: *"…INV-00000744 … is a duplicate of INV-00000743 … $19.00 will be returned to your card ending in 5562 within 5-10 business days."* Every figure in that reply appears in the tool output.
 
-| target from the blueprint | measured | verdict |
-|---|---|---|
-| 98 % accuracy | **98.1 %** on the 260-case golden set (tuned against → optimistic); **90.0 %** on a fresh 70-case hold-out, first pass (unbiased), 94.3 % after fixing what it exposed | **~90 % is the honest figure** |
-| guardrails | injection / SQLi / cross-customer / refund-bypass / secrets: **100 %** safe outcomes (golden and hold-out), **0 leaks**, **0 %** false positives on 28 benign look-alikes + 600 real support messages; PII scan of logs: 0 unmasked values | met |
-| <2 s latency | **p50 7.8 s, p95 20.4 s** single-user on the free API (≈4.4 LLM calls/query); input guard ~10 ms, off-topic <1 s, cache hits in ms | **not met** (provider-bound) |
-| 100+ concurrent users | orchestration layer (mock LLM): 100 users with think time → p50 0.9 s / p95 3.6 s, 0 errors; 250 users OK; 20 % injected LLM failures → 0 × 5xx | met for the orchestration layer |
-| 500+ queries/day | 500 queries in 51 s (mock LLM); real capacity ≈ 20–35 k/day per key | met |
-| 4 h → 15 min debugging | not measured; 17 traced incidents documented | n/a |
+**The validator catching a draft (live run).** For "I want my money back for my last invoice" ($149, over the limit) a draft said "I'll submit the request now" after the request was already filed. The validator flagged an unfulfilled action promise. The customer got only a holding message, and the specialist got the case with full context:
 
-**Quote only what the reports show.** In particular: use ≈90 % (hold-out) rather than 98 %, and do not claim sub-2-second responses.
+![Human escalation desk](docs/img/escalation-desk.png)
 
-## Known limitations
+## Try it
 
-SQLite + in-process rate limiter/cache are single-process (use Postgres/Redis for multi-worker — compose file included, untested here because Docker isn't installed on the dev machine). Escalation holding replies are English. Alembic migrations are not set up (the seed rebuilds the schema). Slack/Langfuse were exercised in dry-run/offline mode (no workspace/keys supplied). Details: `docs/guardrails.md` §13.
+1. Open the [console](https://orbit-support-ui.vercel.app), pick a login, and write anything. The agent works out the problem from your message, not from the login.
+2. Or press a scenario button (duplicate payment, refund over $100, prompt injection, someone else's data, …), then **Explain this execution**. **Schedule** auto-plays scenarios on an interval.
+3. Run it locally, configure it or deploy your own: [`docs/reference.md`](docs/reference.md).
 
-## The agent console (web UI)
-
-Three-pane mission control: the **customer conversation** (left), a live **agent network** (centre: agents light up, packets flow along edges, tools flash, a human desk node turns amber when it is waiting), and **system state** (right: intent, confidence, urgency, sentiment, risk, agent states). Underneath, the **live execution trace**, the **tool calls** (click for arguments and result) and the **security & policy layer** (ten checks, each pass/blocked/info as it happens). Along the bottom: **scenario buttons** (and a **Schedule** button that auto-plays chosen scenarios on an interval, in the browser tab), (duplicate payment, refund over $100, angry customer, prompt injection, someone else's data, …), **Explain this execution** (a plain-language account of what happened and why) and the **Human escalation desk** (the case exactly as the specialist sees it, with approve / edit / reject that updates the customer's chat). The **Scope & design** tab shows the support scope, workflows, tools, agent boundaries, trust boundaries, policies and failure behaviour.
-
-It is driven by real events: `POST /v1/query/stream` emits `trace` server-sent events (agent start/end, tool calls with masked arguments, guardrail decisions, validator verdicts), never prompt text. The UI is static files in `frontend/` (no build step): hosted on **Vercel**, talking to the API on **Render** (`CORS_ORIGINS`), and also served by the API at `/app/`. `DEMO_MODE=true` shows synthetic demo logins (never with real data).
-
-## Deploy your own
-
-Backend: `render.yaml` is a Blueprint. Fork the repo, then in Render choose **New → Blueprint**, select the fork and set `NVIDIA_API_KEY` (and `CORS_ORIGINS` to your UI's origin). Frontend: `cd frontend && npx vercel --prod`; `frontend/config.js` points `*.vercel.app` hosts at the Render API: edit the URL there for your own backend.
+Quote only what the reports show: use about 90 % rather than 98 %, and do not claim sub-2-second answers.
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Datasets referenced for evaluation (Bitext, multilingual tickets, prompt-injection and SQLi corpora from Kaggle) keep their own licenses and are not redistributed here.
+MIT, see [LICENSE](LICENSE). Datasets referenced for evaluation (Bitext, multilingual tickets, prompt-injection and SQLi corpora from Kaggle) keep their own licenses and are not redistributed.

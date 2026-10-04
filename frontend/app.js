@@ -109,7 +109,7 @@ function onTrace(ev) {
       tline(t, bad ? "⛔" : "✓", bad ? `Input guard <b>blocked</b> the message: ${esc((o.reasons || []).join(", "))}${o.score ? " (injection score " + o.score + ")" : ""}` : `Input guard passed${masked ? " · card/secret masked" : ""} · injection score ${o.score ?? 0}`, bad ? "bad" : "ok");
       if (bad) { setNode("orch", "done", "stopped"); } renderSec();
     } else if (n === "guard.safety_model") {
-      run.checks.safety = { unsafe: !!o.unsafe, err: !!o.error }; tline(t, o.unsafe ? "⚠" : "✓", `Content-safety model: ${o.unsafe ? "<b>unsafe</b>" : o.error ? "unavailable (skipped)" : "safe"} · ${fmt(ev.ms)}`, o.unsafe ? "warn" : "dim"); renderSec();
+      run.checks.safety = { unsafe: !!o.unsafe, err: !!o.error }; if (!run.checks.guard?.bad) setNode("guard", o.unsafe ? "blocked" : "done", o.unsafe ? "UNSAFE" : "passed"); tline(t, o.unsafe ? "⚠" : "✓", `Content-safety model: ${o.unsafe ? "<b>unsafe</b>" : o.error ? "unavailable (skipped)" : "safe"} · ${fmt(ev.ms)}`, o.unsafe ? "warn" : "dim"); renderSec();
     } else if (n === "agent.dispatcher") {
       run.dispatch = o; setNode("dispatcher", "done", fmt(ev.ms));
       tline(t, "✓", `Intent detected: <b>${esc((o.intents || []).join(" + "))}</b> · urgency ${esc(o.urgency)} · sentiment ${esc(o.sentiment)} · confidence ${Math.round((o.confidence || 0) * 100)}%`, "ok");
