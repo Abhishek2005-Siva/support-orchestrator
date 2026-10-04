@@ -75,7 +75,7 @@ app/db/                     models · session · seed · ids
 kb/                         43 markdown help-center pages (policy ground truth)
 evals/                      golden dataset builder · end-to-end runner · dispatcher/KB/guardrail evals · security corpus
 loadtests/                  traffic simulator (uvicorn + mock) · locustfile
-tests/                      offline suite (≈110) + tests/live (≈45, real LLM)
+tests/                      offline suite (145) + tests/live (42, real LLM)
 reports/                    numbered reports for you to read (see reports/INDEX.md)
 docs/                       this file · guardrails.md · debugging-case-studies.md · blueprint.md
 ```
