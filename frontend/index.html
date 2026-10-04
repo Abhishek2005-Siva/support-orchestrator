@@ -17,7 +17,7 @@
     <button data-v="queue" id="nav-queue" hidden>Review queue <i id="qn" hidden>0</i></button>
   </nav>
   <div class="grow"></div>
-  <label class="acct" id="acct-wrap" hidden>customer <select id="acct"></select></label>
+  <label class="acct" id="acct-wrap" hidden title="Who is logged in. The agent knows this from the login, like a real support portal. It works out WHAT the problem is from the message.">signed in as <select id="acct"></select></label>
   <span class="live" id="live"><i></i><span id="live-t">connecting…</span></span>
   <button id="how" class="ghost">How it works</button>
 </header>
@@ -44,7 +44,7 @@
 
   <section class="bar">
     <div class="scen" id="scen"></div>
-    <div class="acts"><button id="explain" class="btn alt" disabled>Explain this execution</button><button id="esc" class="btn warn" disabled>Human escalation <i id="esc-n" hidden>1</i></button></div>
+    <div class="acts"><button id="sched" class="btn ghostb">Schedule ⏱</button><button id="explain" class="btn alt" disabled>Explain this execution</button><button id="esc" class="btn warn" disabled>Human escalation <i id="esc-n" hidden>1</i></button></div>
     <p class="hint" id="scen-hint">Scenarios pick the right demo customer and send a real message through the live system.</p>
   </section>
 </main>
@@ -63,6 +63,14 @@
 
 <aside id="drawer" class="drawer" hidden><div class="dhead"><h2>Human escalation desk</h2><button class="ghost" id="dclose2">Close</button></div><div id="dbody2"></div></aside>
 <dialog id="dlg-explain"><div class="dlg"><div id="explain-body"></div><button class="btn" data-close>Close</button></div></dialog>
+<dialog id="dlg-sch"><div class="dlg">
+  <h2>Schedule scenarios</h2>
+  <p class="muted">Runs the chosen scenarios one after another, then waits between runs. It runs inside this browser tab: closing the tab stops it. Every run sends real messages through the live system and uses model calls (about 5 per scenario).</p>
+  <div id="sch-list" class="schl"></div>
+  <div class="row" style="align-items:center"><label>Wait between runs <select id="sch-every"><option value="20">20 seconds</option><option value="30" selected>30 seconds</option><option value="60">1 minute</option><option value="300">5 minutes</option></select></label>
+    <label><input type="checkbox" id="sch-repeat" checked style="width:auto"> repeat forever</label></div>
+  <div class="row"><button class="btn" id="sch-start">Start</button><button class="btn bad" id="sch-stop">Stop</button><button class="ghost" data-close>Close</button></div>
+</div></dialog>
 <dialog id="dlg-how"><div class="dlg">
   <h2>How it works</h2>
   <ol><li><b>Input guard</b> cleans the message, masks card numbers and secrets, blocks injection and SQL attacks (no AI, milliseconds).</li>

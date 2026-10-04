@@ -202,8 +202,8 @@ function renderAgents() {
 /* =============== conversation =============== */
 const thread = () => S.threads[S.cur.client_id] ||= [];
 function renderThread() {
-  const el = $("#thread"); el.innerHTML = ""; $("#who").textContent = S.cur ? "· " + S.cur.label : "";
-  if (!thread().length) el.innerHTML = `<p class="empty">Type as the customer, or pick a scenario below.<br><small>${esc(S.cur?.hint || "")}</small></p>`; else thread().forEach(m => el.appendChild(m.node)); el.scrollTop = 1e9;
+  const el = $("#thread"); el.innerHTML = ""; $("#who").textContent = S.cur ? "· " + S.cur.client_id : "";
+  if (!thread().length) el.innerHTML = `<p class="empty">You are signed in as <b>${esc(S.cur?.client_id || "")}</b>.<br>Type any request: the agent works out the problem from your message and checks it against this account.<br><br><small>Test data in this account: <b>${esc(S.cur?.label || "")}</b>, ${esc(S.cur?.hint || "")}. Try a message that does <i>not</i> match it too.</small></p>`; else thread().forEach(m => el.appendChild(m.node)); el.scrollTop = 1e9;
 }
 function bubble(cls, html) { const d = document.createElement("div"); d.className = "msg " + cls; d.innerHTML = html; thread().push({ node: d }); $(".empty", $("#thread"))?.remove(); $("#thread").appendChild(d); $("#thread").scrollTop = 1e9; return d; }
 async function useAccount(a) {
@@ -263,6 +263,28 @@ async function runScenario(s, btn) {
   if (S.busy) return; $$(".sbtn").forEach(x => x.classList.toggle("sel", x === btn)); $("#scen-hint").textContent = s.hint;
   if (s.account !== "any") { const a = S.accounts.find(x => x.key === s.account); if (a && S.cur?.client_id !== a.client_id) { if (!(await useAccount(a))) return; } }
   await send(s.message, s);
+}
+
+/* =============== scheduler =============== */
+const SCH = { on: false, ids: [] };
+const waitIdle = async () => { while (S.busy) await sleep(300); };
+async function schLoop() {
+  SCH.on = true; $("#sched").classList.add("on"); $("#sched").textContent = "Scheduled ●";
+  do {
+    for (const id of SCH.ids) {
+      if (!SCH.on) break; const s = SCENARIOS.find(x => x.id === id); await waitIdle(); await runScenario(s, $$(".sbtn").find(b => b.dataset.id === id)); await waitIdle();
+      const nxt = SCH.ids[(SCH.ids.indexOf(id) + 1) % SCH.ids.length];
+      if (!SCH.repeat && id === SCH.ids[SCH.ids.length - 1]) break;
+      for (let t = SCH.every; t > 0 && SCH.on; t--) { $("#scen-hint").textContent = `Scheduled: next “${SCENARIOS.find(x => x.id === nxt).label}” in ${t}s (stop it from the Schedule button)`; await sleep(1000); }
+    }
+  } while (SCH.on && SCH.repeat);
+  schStop();
+}
+function schStop() { SCH.on = false; $("#sched").classList.remove("on"); $("#sched").textContent = "Schedule ⏱"; if (!S.busy) $("#scen-hint").textContent = "Schedule stopped."; }
+function initSchedule() {
+  $("#sched").onclick = () => { $("#sch-list").innerHTML = SCENARIOS.map(s => `<label><input type="checkbox" value="${s.id}" ${SCH.ids.includes(s.id) ? "checked" : ""}>${esc(s.label)}</label>`).join(""); $("#dlg-sch").showModal(); };
+  $("#sch-start").onclick = () => { const ids = $$("#sch-list input:checked").map(i => i.value); if (!ids.length) return toast("Pick at least one scenario"); SCH.ids = ids; SCH.every = +$("#sch-every").value; SCH.repeat = $("#sch-repeat").checked; $("#dlg-sch").close(); if (!SCH.on) schLoop(); else toast("Schedule updated"); };
+  $("#sch-stop").onclick = () => { schStop(); $("#dlg-sch").close(); };
 }
 
 /* =============== explain =============== */
@@ -350,7 +372,7 @@ function buildDesign() {
 /* =============== boot =============== */
 function view(v) { ["console", "design", "queue"].forEach(x => $("#v-" + x).hidden = x !== v); $$("#nav button").forEach(b => b.classList.toggle("on", b.dataset.v === v)); if (v === "queue") loadQueue(); }
 async function boot() {
-  buildNet(); buildScenarios(); buildDesign(); renderSec(); renderState(); renderAgents();
+  buildNet(); buildScenarios(); buildDesign(); initSchedule(); renderSec(); renderState(); renderAgents();
   $("#nav").onclick = e => { const b = e.target.closest("button"); if (b) view(b.dataset.v); };
   $("#composer").onsubmit = e => { e.preventDefault(); send($("#msg").value); }; $("#msg").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("#msg").value); } }); $("#msg").addEventListener("input", grow);
   $("#how").onclick = () => $("#dlg-how").showModal(); $$("[data-close]").forEach(b => b.onclick = () => b.closest("dialog").close()); $("#explain").onclick = explain; $("#esc").onclick = openDesk; $("#dclose2").onclick = () => $("#drawer").hidden = true;
@@ -360,7 +382,7 @@ async function boot() {
   $("#thread").innerHTML = `<p class="empty">Waking the demo server…<br><small>The free server sleeps when idle; this can take up to a minute.</small></p>`;
   for (let i = 0; i < 10 && !S.accounts.length; i++) { try { S.accounts = await req("/demo/accounts"); } catch (e) { if (e.status === 404) break; await sleep(5000); } }
   if (!S.accounts.length) { $("#live").className = "live off"; $("#live-t").textContent = "demo accounts unavailable"; $("#thread").innerHTML = `<p class="empty">Demo accounts are disabled or the server is unreachable.</p>`; return; }
-  const custs = S.accounts.filter(a => a.role === "customer"); $("#acct").innerHTML = custs.map(a => `<option value="${esc(a.client_id)}">${esc(a.label)}</option>`).join(""); $("#acct-wrap").hidden = false;
+  const custs = S.accounts.filter(a => a.role === "customer"); $("#acct").innerHTML = custs.map(a => `<option value="${esc(a.client_id)}">${esc(a.client_id)} · test data: ${esc(a.label.toLowerCase())}</option>`).join(""); $("#acct-wrap").hidden = false;
   if (staffAcct()) $("#nav-queue").hidden = false; $("#live").className = "live on"; $("#live-t").textContent = "LIVE";
   await useAccount(custs.find(a => a.key === "failed_payment") || custs[0]); if (staffAcct()) { loadQueue(); }
 }
