@@ -1,0 +1,25 @@
+# runtime
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
+pydantic==2.13.5
+pydantic-settings==2.15.0
+langgraph==1.2.12
+langgraph-checkpoint-sqlite==3.1.1
+langchain-core==1.6.6
+langfuse==4.16.0
+openai==3.24.0
+httpx==0.28.1
+sqlalchemy==2.1.2
+aiosqlite==0.22.1
+asyncpg>=0.30          # only for DATABASE_URL=postgresql+asyncpg://...
+PyJWT==2.15.1
+numpy==2.5.3
+rank-bm25==0.2.2
+sse-starlette==3.5.0
+prometheus-client>=0.21
+# evals / tests / load tests
+pandas==3.0.6
+pytest==9.1.1
+pytest-asyncio==1.4.0
+locust==2.46.6
+psutil==7.2.2

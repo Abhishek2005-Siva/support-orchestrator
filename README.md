@@ -1,0 +1,88 @@
+# Support Orchestrator — multi-agent customer-support system
+
+**LangGraph · FastAPI · Langfuse · Pydantic · NVIDIA NIM (free API)** — built to be *measurably* accurate, guarded and fast, and honest about all three.
+
+A customer message (REST or Slack) goes through input guardrails → a **dispatcher** that routes it → up to two **specialists** (billing, technical, general) and/or an **escalation** agent running **in parallel** → a **validator** (deterministic grounding checks + LLM faithfulness judge) → either the customer, a revision, or a **human review queue** where the LangGraph run is *paused* until staff resolve it. Everything is traced (local JSONL + Langfuse) with PII masked.
+
+> The company ("Orbit"), its customers, invoices and knowledge base are **synthetic**. Nothing here is real customer data.
+
+## Where to look (for manual checking)
+
+| I want to… | open |
+|---|---|
+| see every measured number | [`reports/INDEX.md`](reports/INDEX.md) |
+| know **every guardrail / method** and which test proves it | [`docs/guardrails.md`](docs/guardrails.md) |
+| understand the design | [`docs/architecture.md`](docs/architecture.md) |
+| read real incidents + how traces found them | [`docs/debugging-case-studies.md`](docs/debugging-case-studies.md) |
+| see what went wrong in the eval, case by case | `reports/04_eval_full.md` (failures section) and `reports/eval_runs/full/results.jsonl` |
+| audit the validator's decisions | `logs/validator_audit.jsonl`, `reports/eval_runs/full/logs/validator_audit.jsonl` |
+| see blocked attacks | `logs/security_events.jsonl` |
+| see where time went for one query | `python scripts/trace_view.py --last 3` |
+
+## Quick start
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp .env.example .env            # put NVIDIA_API_KEY=nvapi-... in it (never commit it)
+make seed                       # synthetic backend (200 customers, 879 invoices, edge cases) + golden dataset
+make test                       # 141 offline tests: unit + guardrails + graph (mock LLM) + API + Slack
+make live-test                  # 41 acceptance tests against the real NVIDIA API (per agent)
+make run                        # API on :8000  (docs at /docs)
+```
+
+```bash
+# get a token (demo credentials are written to data/demo_credentials.json by the seed; git-ignored)
+CID=CUST-000111; SECRET=$(python3 -c "import json;print(json.load(open('data/demo_credentials.json'))['$CID'])")
+TOKEN=$(curl -s localhost:8000/auth/token -H 'content-type: application/json' -d "{\"client_id\":\"$CID\",\"client_secret\":\"$SECRET\"}" | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+curl -s localhost:8000/v1/query -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{"message":"Why did my last payment fail?"}'
+```
+
+| endpoint | purpose |
+|---|---|
+| `POST /auth/token` | client id + secret → JWT (roles: customer, agent_staff, admin) |
+| `POST /v1/query` | submit a query (`wait:false` → 202 + poll). Identity comes from the token only |
+| `GET /v1/query/{id}` · `POST /v1/query/stream` | status/result · SSE progress |
+| `GET /v1/review-queue` · `POST /v1/review-queue/{id}/resolve` | staff: list / approve · edit · reject (resumes the paused graph) |
+| `POST /slack/events` · `/slack/interactions` | Slack Events API + review buttons (signature-verified) |
+| `GET /healthz` · `/metrics` | health · Prometheus |
+
+Staff demo logins (`staff-alice`, `admin`) are in `data/demo_credentials.json` too.
+
+## Configuration
+
+`.env` (see `.env.example`): `NVIDIA_API_KEY`, `JWT_SECRET`, optional `LANGFUSE_PUBLIC_KEY/SECRET_KEY/HOST` (without keys traces go to `logs/traces/*.jsonl` only), optional `SLACK_BOT_TOKEN`/`SLACK_SIGNING_SECRET` (without a token outgoing Slack messages go to `logs/slack_outbox.jsonl`). Default model: `nvidia/nemotron-3-ultra-550b-a55b` (the original `nemotron-3-super-120b` was retired by NVIDIA on 2026-10-03). Models, thresholds, rate limits and latency knobs are all in `app/core/config.py` and overridable by env var (e.g. `SPECIALIST_MODEL`, `VALIDATOR_THINKING=true`, `MERGE_MODE=llm`, `MAX_REVISIONS`, `REFUND_AUTO_LIMIT_USD`).
+
+`LLM_MODE=mock` runs the whole system with a deterministic fake LLM (offline tests, CI, load tests).
+
+## Evaluation methodology (how the numbers are produced)
+
+1. **Golden dataset** — `evals/golden.jsonl`, 260 cases built by `evals/build_golden.py` from three non-LLM ground truths: the seed manifest (invoice ids, amounts, failure reasons, days since payment…), the knowledge-base pages, and Kaggle corpora (Bitext support phrasing, prompt-injection/jailbreak sets, SQLi set).
+2. **Deterministic checks** — required facts (regex), forbidden claims, DB side-effects (refund created? status? ticket? review row & priority?), routing, leak patterns.
+3. **Independent faithfulness judge** (`--judge`) — separate prompt, reference = the customer's real DB rows + KB chunks retrieved from the *reply*, not from the agent's evidence.
+4. **Honest reporting** — failures are listed case by case in the report. Label noise in the Kaggle-derived routing sets is documented.
+
+```bash
+make eval          # live LLM, ~30 min on the free key -> reports/04_eval_full.md
+make guardrails    # reports/02_guardrails.md      make load   # reports/06_load_test.md
+```
+
+## Results at a glance (details and caveats: [`reports/INDEX.md`](reports/INDEX.md))
+
+| target from the blueprint | measured | verdict |
+|---|---|---|
+| 98 % accuracy | **98.1 %** on the 260-case golden set (tuned against → optimistic); **90.0 %** on a fresh 70-case hold-out, first pass (unbiased), 94.3 % after fixing what it exposed | **~90 % is the honest figure** |
+| guardrails | injection / SQLi / cross-customer / refund-bypass / secrets: **100 %** safe outcomes (golden and hold-out), **0 leaks**, **0 %** false positives on 28 benign look-alikes + 600 real support messages; PII scan of logs: 0 unmasked values | met |
+| <2 s latency | **p50 7.8 s, p95 20.4 s** single-user on the free API (≈4.4 LLM calls/query); input guard ~10 ms, off-topic <1 s, cache hits in ms | **not met** (provider-bound) |
+| 100+ concurrent users | orchestration layer (mock LLM): 100 users with think time → p50 0.9 s / p95 3.6 s, 0 errors; 250 users OK; 20 % injected LLM failures → 0 × 5xx | met for the orchestration layer |
+| 500+ queries/day | 500 queries in 51 s (mock LLM); real capacity ≈ 20–35 k/day per key | met |
+| 4 h → 15 min debugging | not measured; 17 traced incidents documented | n/a |
+
+**Quote only what the reports show.** In particular: use ≈90 % (hold-out) rather than 98 %, and do not claim sub-2-second responses.
+
+## Known limitations
+
+SQLite + in-process rate limiter/cache are single-process (use Postgres/Redis for multi-worker — compose file included, untested here because Docker isn't installed on the dev machine). Escalation holding replies are English. Alembic migrations are not set up (the seed rebuilds the schema). Slack/Langfuse were exercised in dry-run/offline mode (no workspace/keys supplied). Details: `docs/guardrails.md` §13.
+
+## Web UI & deployment
+
+`/app/` (the API redirects `/` there) is a no-build single-page UI: customer chat with live pipeline progress, a "how this was answered" trace, a staff review-queue screen (approve / edit / reject resumes the paused graph), and a guardrail lab. Set `DEMO_MODE=true` to show one-click synthetic demo logins (never with real data); set `CORS_ORIGINS` only if you host the UI on another origin. Deploy to Render with `render.yaml` (Blueprint) and set `NVIDIA_API_KEY` in the dashboard.

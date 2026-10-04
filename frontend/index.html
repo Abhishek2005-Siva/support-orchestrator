@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Orbit Support — multi-agent assistant</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='15' fill='%236d5efc'/><circle cx='16' cy='16' r='6' fill='white'/><circle cx='25' cy='9' r='3' fill='%2338e1b0'/></svg>">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="brand"><span class="logo"></span><div><b>Orbit Support</b><small>multi-agent · guarded · traced</small></div></div>
+    <nav id="tabs" hidden>
+      <button data-tab="chat" class="tab active">Chat</button>
+      <button data-tab="staff" class="tab" id="tab-staff" hidden>Review queue <span id="queue-badge" class="badge" hidden>0</span></button>
+      <button data-tab="lab" class="tab">Guardrail lab</button>
+      <button data-tab="about" class="tab">How it works</button>
+    </nav>
+    <div class="who" id="who" hidden><span id="who-label"></span><button id="logout" class="ghost">Sign out</button></div>
+  </header>
+
+  <!-- LOGIN -->
+  <main id="view-login" class="center">
+    <section class="card login">
+      <h1>Sign in to try the assistant</h1>
+      <p class="muted">All customers, invoices and tickets are <b>synthetic</b>. Pick a demo account or use your own credentials.</p>
+      <div id="demo-accounts" class="demo-grid"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+      <details><summary>Use credentials</summary>
+        <form id="login-form" class="stack">
+          <input id="cid" placeholder="client id (e.g. CUST-000111)" autocomplete="username" required>
+          <input id="secret" type="password" placeholder="client secret" autocomplete="current-password" required>
+          <button class="primary">Sign in</button>
+        </form>
+      </details>
+      <p id="login-err" class="err" hidden></p>
+    </section>
+  </main>
+
+  <!-- CHAT -->
+  <main id="view-chat" class="split" hidden>
+    <aside class="side">
+      <div class="card"><h3>Account</h3><div id="acct" class="kv"></div></div>
+      <div class="card"><h3>Try asking</h3><div id="chips" class="chips"></div></div>
+    </aside>
+    <section class="chat">
+      <div id="thread" class="thread"></div>
+      <form id="composer" class="composer">
+        <textarea id="msg" rows="1" maxlength="2000" placeholder="Ask about a charge, a refund, an API error…  (Enter to send, Shift+Enter for newline)"></textarea>
+        <button class="primary" id="send">Send</button>
+      </form>
+    </section>
+  </main>
+
+  <!-- STAFF -->
+  <main id="view-staff" class="split" hidden>
+    <aside class="side wide">
+      <div class="row between"><h3>Human review queue</h3><button id="refresh-queue" class="ghost">Refresh</button></div>
+      <div class="seg" id="queue-filter"><button data-s="pending" class="active">Pending</button><button data-s="all">All</button></div>
+      <div id="queue" class="queue"></div>
+    </aside>
+    <section class="detail" id="detail"><div class="empty">Select a case to review it.</div></section>
+  </main>
+
+  <!-- LAB -->
+  <main id="view-lab" class="page" hidden>
+    <section class="card"><h2>Guardrail lab</h2>
+      <p class="muted">One click sends a real attack through the live pipeline (needs a customer sign-in). You'll see which layer stopped it.</p>
+      <div id="lab" class="lab-grid"></div>
+      <div id="lab-out" class="lab-out"></div>
+    </section>
+  </main>
+
+  <!-- ABOUT -->
+  <main id="view-about" class="page" hidden>
+    <section class="card prose">
+      <h2>How a message is handled</h2>
+      <ol class="flow">
+        <li><b>Input guard</b><span>sanitise · mask secrets &amp; card numbers · SQL-injection and prompt-injection checks</span></li>
+        <li><b>Dispatcher</b><span>intent · urgency · sentiment · deterministic escalation triggers · topic control</span></li>
+        <li><b>Specialists in parallel</b><span>billing · technical · general (ReAct + tools) · escalation</span></li>
+        <li><b>Validator</b><span>grounding checks on every amount, id, date and claim · LLM faithfulness judge</span></li>
+        <li><b>Deliver · revise · human review</b><span>risky or uncertain answers pause in a queue until staff resolve them</span></li>
+      </ol>
+      <p class="muted">Tools only ever see the signed-in customer's data; refunds follow a deterministic policy engine; every step is traced with PII masked.</p>
+    </section>
+  </main>
+</div>
+<div id="toast" class="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

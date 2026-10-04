@@ -1,0 +1,11 @@
+[project]
+name = "support-orchestrator"
+version = "0.1.0"
+description = "Multi-agent customer support orchestration (LangGraph + FastAPI + Langfuse + NVIDIA NIM)"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = ["live: hits the real NVIDIA API (deselect with -m 'not live')"]
+addopts = "-m 'not live'"
