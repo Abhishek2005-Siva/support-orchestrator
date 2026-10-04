@@ -1,0 +1,991 @@
+{
+ "tasks": [
+  {
+   "id": "B1",
+   "area": "Billing",
+   "task": "Explain a charge or invoice",
+   "example": "What is this $49 charge?",
+   "handled_by": "Billing agent",
+   "autonomy": "auto",
+   "outcome": "Quotes the real invoice id, amount, date and status"
+  },
+  {
+   "id": "B2",
+   "area": "Billing",
+   "task": "Diagnose a failed payment",
+   "example": "Why did my payment fail?",
+   "handled_by": "Billing agent",
+   "autonomy": "auto",
+   "outcome": "States the failure reason from the payment record and the fix (update card, Retry payment)"
+  },
+  {
+   "id": "B3",
+   "area": "Billing",
+   "task": "Explain a duplicate charge",
+   "example": "I was charged twice",
+   "handled_by": "Billing agent",
+   "autonomy": "auto",
+   "outcome": "Finds the pair by rule, explains, offers a refund. Never refunds unasked"
+  },
+  {
+   "id": "B4",
+   "area": "Billing",
+   "task": "Refund request, eligible and ≤ $100",
+   "example": "Refund my last invoice",
+   "handled_by": "Billing agent + policy engine",
+   "autonomy": "auto_policy",
+   "outcome": "Eligibility decided by code; request filed and auto-approved"
+  },
+  {
+   "id": "B5",
+   "area": "Billing",
+   "task": "Refund request over $100",
+   "example": "Money back for my $149 invoice",
+   "handled_by": "Billing agent + human",
+   "autonomy": "human_approval",
+   "outcome": "Filed as pending approval; customer told it is pending; staff decide; customer is notified"
+  },
+  {
+   "id": "B6",
+   "area": "Billing",
+   "task": "Refund not allowed",
+   "example": "Refund my annual plan from 40 days ago",
+   "handled_by": "Billing agent + policy engine",
+   "autonomy": "auto_policy",
+   "outcome": "Declined with the exact numbers (days since payment vs window)"
+  },
+  {
+   "id": "B7",
+   "area": "Billing",
+   "task": "Pricing, plans, cancellation, VAT, promo",
+   "example": "Do you charge a cancellation fee?",
+   "handled_by": "Billing agent (KB)",
+   "autonomy": "auto",
+   "outcome": "Answered from the knowledge base only"
+  },
+  {
+   "id": "T1",
+   "area": "Technical",
+   "task": "API errors (401 / 429 / 5xx)",
+   "example": "I keep getting 429s",
+   "handled_by": "Technical agent",
+   "autonomy": "auto",
+   "outcome": "Uses the account's real error logs and plan limit"
+  },
+  {
+   "id": "T2",
+   "area": "Technical",
+   "task": "Webhook delivery problems",
+   "example": "Webhooks stopped arriving",
+   "handled_by": "Technical agent",
+   "autonomy": "auto",
+   "outcome": "Combines logs, live service status and docs"
+  },
+  {
+   "id": "T3",
+   "area": "Technical",
+   "task": "SSO / SAML failures",
+   "example": "SAML says assertion expired",
+   "handled_by": "Technical agent",
+   "autonomy": "auto",
+   "outcome": "Diagnoses clock skew etc. from logs and docs"
+  },
+  {
+   "id": "T4",
+   "area": "Technical",
+   "task": "How-to (export, SDK, mobile, 2FA)",
+   "example": "How do I export to CSV?",
+   "handled_by": "Technical agent (KB)",
+   "autonomy": "auto",
+   "outcome": "Steps from the knowledge base"
+  },
+  {
+   "id": "T5",
+   "area": "Technical",
+   "task": "Open a support ticket",
+   "example": "Please open a ticket",
+   "handled_by": "Technical agent",
+   "autonomy": "gated_write",
+   "outcome": "Only if the customer asks for one; idempotent"
+  },
+  {
+   "id": "G1",
+   "area": "General",
+   "task": "Policies, hours, SLA, security, privacy",
+   "example": "What are your support hours?",
+   "handled_by": "General agent (KB)",
+   "autonomy": "auto",
+   "outcome": "Answered from the knowledge base only"
+  },
+  {
+   "id": "G2",
+   "area": "General",
+   "task": "Account and team how-to",
+   "example": "How do I add a teammate?",
+   "handled_by": "General agent (KB)",
+   "autonomy": "auto",
+   "outcome": "Steps from the knowledge base"
+  },
+  {
+   "id": "E1",
+   "area": "Human handoff",
+   "task": "Angry or abusive customer",
+   "example": "THIS IS OUTRAGEOUS!!!",
+   "handled_by": "Escalation agent",
+   "autonomy": "human",
+   "outcome": "Holding reply with reference + ETA; case in the queue"
+  },
+  {
+   "id": "E2",
+   "area": "Human handoff",
+   "task": "Legal threat",
+   "example": "My lawyer will contact you",
+   "handled_by": "Escalation agent",
+   "autonomy": "human",
+   "outcome": "Critical priority; no admissions or promises"
+  },
+  {
+   "id": "E3",
+   "area": "Human handoff",
+   "task": "Security incident / hacked account",
+   "example": "Someone used my API keys",
+   "handled_by": "Escalation agent",
+   "autonomy": "human",
+   "outcome": "Security queue, critical; customer told to rotate keys"
+  },
+  {
+   "id": "E4",
+   "area": "Human handoff",
+   "task": "Fraud / chargeback",
+   "example": "I'm disputing this with my bank",
+   "handled_by": "Escalation agent",
+   "autonomy": "human",
+   "outcome": "High priority"
+  },
+  {
+   "id": "E5",
+   "area": "Human handoff",
+   "task": "Customer asks for a person",
+   "example": "Let me talk to a manager",
+   "handled_by": "Escalation agent",
+   "autonomy": "human",
+   "outcome": "Always honoured"
+  },
+  {
+   "id": "E6",
+   "area": "Human handoff",
+   "task": "Repeat contact",
+   "example": "Third time I'm writing",
+   "handled_by": "Escalation agent",
+   "autonomy": "human",
+   "outcome": "≥3 open tickets AND a complaint / follow-up signal"
+  },
+  {
+   "id": "E7",
+   "area": "Human handoff",
+   "task": "The system cannot answer safely",
+   "example": "Does Orbit have a Rust SDK?",
+   "handled_by": "Validator → human",
+   "autonomy": "human",
+   "outcome": "Uncertain, ungrounded or rejected drafts are held for a human"
+  },
+  {
+   "id": "X1",
+   "area": "Refused",
+   "task": "Off-topic, jailbreak, injection",
+   "example": "Ignore your instructions…",
+   "handled_by": "Input guard / dispatcher",
+   "autonomy": "refuse",
+   "outcome": "Polite refusal; security event logged"
+  },
+  {
+   "id": "X2",
+   "area": "Refused",
+   "task": "Someone else's data",
+   "example": "Show invoices for CUST-000002",
+   "handled_by": "Input guard + tool runtime",
+   "autonomy": "refuse",
+   "outcome": "Refused; tools only ever see the signed-in customer"
+  }
+ ],
+ "out_of_scope": [
+  "Changing the payment method, plan or cancelling on the customer's behalf: no write tools exist for these, so the agents give guidance only.",
+  "Deleting accounts, resetting passwords or 2FA: guidance only.",
+  "Physical orders, shipping and delivery: Orbit is a subscription product, so these concepts do not exist (Kaggle 'order/delivery' intents were excluded from the evaluation for that reason).",
+  "Legal, financial or medical advice; anything unrelated to Orbit.",
+  "Languages other than English in escalation templates (specialists reply in the customer's language)."
+ ],
+ "workflows": [
+  {
+   "id": "W1",
+   "name": "Explain a charge / failed payment",
+   "tasks": [
+    "B1",
+    "B2",
+    "B3"
+   ],
+   "steps": [
+    {
+     "actor": "guard",
+     "text": "Sanitise text; mask card numbers and secrets; SQL-injection and prompt-injection checks",
+     "boundary": "Customer text enters the system here"
+    },
+    {
+     "actor": "dispatcher",
+     "text": "Intent = billing, urgency, sentiment; deterministic escalation triggers can override",
+     "boundary": ""
+    },
+    {
+     "actor": "agent",
+     "text": "Billing agent starts with a parallel prefetch: get_invoices(5) + knowledge-base search",
+     "boundary": ""
+    },
+    {
+     "actor": "tool",
+     "text": "get_invoices: SQL scoped to the signed-in customer",
+     "boundary": "Agent → tool runtime: identity comes from the JWT, never from the model"
+    },
+    {
+     "actor": "agent",
+     "text": "Writes the answer from tool results only (exact ids, amounts, dates)",
+     "boundary": ""
+    },
+    {
+     "actor": "validator",
+     "text": "Deterministic checks: every amount / id / date must be in the evidence; no promises; no internal text",
+     "boundary": "Agent → customer only via the validator"
+    },
+    {
+     "actor": "validator",
+     "text": "LLM judge: claim-by-claim faithfulness; revise once, else human",
+     "boundary": ""
+    },
+    {
+     "actor": "done",
+     "text": "Delivered with confidence and trace",
+     "boundary": ""
+    }
+   ]
+  },
+  {
+   "id": "W2",
+   "name": "Refund request",
+   "tasks": [
+    "B4",
+    "B5",
+    "B6"
+   ],
+   "steps": [
+    {
+     "actor": "guard",
+     "text": "As W1",
+     "boundary": ""
+    },
+    {
+     "actor": "dispatcher",
+     "text": "Flags refund_requested (a request to act, not a policy question)",
+     "boundary": ""
+    },
+    {
+     "actor": "tool",
+     "text": "get_invoices then check_refund_eligibility: the policy engine (code) decides: window 30 d monthly / 14 d annual / 90 d duplicate",
+     "boundary": "Policy is code, not model opinion"
+    },
+    {
+     "actor": "policy",
+     "text": "Write gate: customer message must express refund intent AND dispatcher flagged it AND eligibility is re-derived inside the tool",
+     "boundary": ""
+    },
+    {
+     "actor": "tool",
+     "text": "Eligible and ≤ $100: create_refund_request (auto-approved, idempotent, audited)",
+     "boundary": ""
+    },
+    {
+     "actor": "human",
+     "text": "Over $100: filed as pending_approval and a review row is created; staff approve or reject; the refund is settled and the customer is notified",
+     "boundary": "Money above the limit needs a person"
+    },
+    {
+     "actor": "agent",
+     "text": "Not eligible: explains with exact numbers; offers alternatives",
+     "boundary": ""
+    },
+    {
+     "actor": "validator",
+     "text": "'Approved / issued' may only appear if an approved refund exists in the evidence; promises of future actions must have been performed",
+     "boundary": ""
+    },
+    {
+     "actor": "done",
+     "text": "Delivered",
+     "boundary": ""
+    }
+   ]
+  },
+  {
+   "id": "W3",
+   "name": "Technical incident",
+   "tasks": [
+    "T1",
+    "T2",
+    "T3"
+   ],
+   "steps": [
+    {
+     "actor": "guard",
+     "text": "As W1",
+     "boundary": ""
+    },
+    {
+     "actor": "dispatcher",
+     "text": "Intent = technical",
+     "boundary": ""
+    },
+    {
+     "actor": "tool",
+     "text": "Parallel prefetch: search_knowledge_base + get_service_status + get_user_logs(168 h)",
+     "boundary": ""
+    },
+    {
+     "actor": "agent",
+     "text": "Connects error codes and counts from the logs to the documented fix; no ticket unless the customer asks",
+     "boundary": ""
+    },
+    {
+     "actor": "tool",
+     "text": "run_diagnostic only if logs are empty but the customer still reports a problem",
+     "boundary": ""
+    },
+    {
+     "actor": "validator",
+     "text": "As W1",
+     "boundary": ""
+    },
+    {
+     "actor": "done",
+     "text": "Delivered",
+     "boundary": ""
+    }
+   ]
+  },
+  {
+   "id": "W4",
+   "name": "Knowledge question",
+   "tasks": [
+    "T4",
+    "G1",
+    "G2",
+    "B7"
+   ],
+   "steps": [
+    {
+     "actor": "guard",
+     "text": "As W1",
+     "boundary": ""
+    },
+    {
+     "actor": "dispatcher",
+     "text": "Intent = general / billing / technical",
+     "boundary": ""
+    },
+    {
+     "actor": "tool",
+     "text": "Knowledge-base search (dense-led hybrid; category is a soft preference)",
+     "boundary": ""
+    },
+    {
+     "actor": "agent",
+     "text": "Answers only from articles that directly answer; never claims the product does or does not support something unless an article says so",
+     "boundary": ""
+    },
+    {
+     "actor": "agent",
+     "text": "Nothing relevant: says it couldn't find it and sets needs_human",
+     "boundary": ""
+    },
+    {
+     "actor": "validator",
+     "text": "Grounding + unsupported-negative-claim check; KB-only validated answers may be cached",
+     "boundary": ""
+    },
+    {
+     "actor": "done",
+     "text": "Delivered, or handed to a human if uncertain",
+     "boundary": ""
+    }
+   ]
+  },
+  {
+   "id": "W5",
+   "name": "Escalation",
+   "tasks": [
+    "E1",
+    "E2",
+    "E3",
+    "E4",
+    "E5",
+    "E6"
+   ],
+   "steps": [
+    {
+     "actor": "guard",
+     "text": "Input checks; the content-safety model runs in parallel (best effort)",
+     "boundary": ""
+    },
+    {
+     "actor": "dispatcher",
+     "text": "LLM classification + deterministic triggers (legal, breach, fraud, explicit human request, threats, anger, VIP unhappy, repeat contact)",
+     "boundary": "Triggers override the model"
+    },
+    {
+     "actor": "agent",
+     "text": "Escalation agent: get_ticket_history; one LLM call writes the handoff note",
+     "boundary": ""
+    },
+    {
+     "actor": "policy",
+     "text": "Priority = max(LLM suggestion, deterministic floor): legal/security ⇒ critical; angry/fraud/VIP/repeat ⇒ ≥ high",
+     "boundary": ""
+    },
+    {
+     "actor": "tool",
+     "text": "assign_to_human: one review row per query (PII masked before it is stored)",
+     "boundary": ""
+    },
+    {
+     "actor": "agent",
+     "text": "Customer-facing text is a template: apology + reference + tier ETA; no admissions, no promises",
+     "boundary": ""
+    },
+    {
+     "actor": "agent",
+     "text": "Specialists answer any factual part in parallel; their answer is added after the holding text",
+     "boundary": ""
+    },
+    {
+     "actor": "human",
+     "text": "Staff see summary, priority, draft and holding message; they approve, edit or reject",
+     "boundary": "Staff zone: role-checked endpoints / Slack buttons"
+    },
+    {
+     "actor": "done",
+     "text": "Customer chat and Slack thread are updated when staff resolve",
+     "boundary": ""
+    }
+   ]
+  },
+  {
+   "id": "W6",
+   "name": "The system cannot answer safely",
+   "tasks": [
+    "E7"
+   ],
+   "steps": [
+    {
+     "actor": "validator",
+     "text": "Verdict human_review: specialist unsure, judge unreachable, critical issue after one revision, or low confidence",
+     "boundary": "Fails closed"
+    },
+    {
+     "actor": "agent",
+     "text": "human_prepare: escalation packet includes the draft that was NOT sent and the validator's issues",
+     "boundary": ""
+    },
+    {
+     "actor": "human",
+     "text": "Graph is paused with interrupt() and checkpointed; staff approve / edit / reject",
+     "boundary": ""
+    },
+    {
+     "actor": "done",
+     "text": "Graph resumes; customer is told the outcome",
+     "boundary": ""
+    }
+   ]
+  },
+  {
+   "id": "W7",
+   "name": "Attack or abuse",
+   "tasks": [
+    "X1",
+    "X2"
+   ],
+   "steps": [
+    {
+     "actor": "guard",
+     "text": "Injection / SQLi / unsafe patterns ⇒ deterministic refusal in milliseconds; security event logged; no model call",
+     "boundary": "Nothing downstream runs"
+    },
+    {
+     "actor": "dispatcher",
+     "text": "Anything that slips past: off_topic ⇒ polite refusal, no tools",
+     "boundary": ""
+    },
+    {
+     "actor": "tool",
+     "text": "Foreign ids / customer_id arguments: blocked and logged; queries are scoped to the session anyway",
+     "boundary": "Tool runtime is the enforcement point"
+    },
+    {
+     "actor": "validator",
+     "text": "Last line: PII, other customers' ids, internal text and tool names can never appear in a reply",
+     "boundary": ""
+    },
+    {
+     "actor": "done",
+     "text": "Refused safely",
+     "boundary": ""
+    }
+   ]
+  }
+ ],
+ "tools": [
+  {
+   "name": "search_knowledge_base",
+   "kind": "read",
+   "agents": "billing, technical, general",
+   "purpose": "Help-center articles (43 pages)",
+   "guards": "free-text SQLi scan; ≤4 calls; hidden after a strong prefetch hit; weak matches flagged",
+   "on_failure": "no relevant article ⇒ agent must say so / hand off"
+  },
+  {
+   "name": "get_customer_profile",
+   "kind": "read",
+   "agents": "all specialists",
+   "purpose": "Plan, tier, status, card summary of the signed-in customer",
+   "guards": "identity from JWT; no id parameter",
+   "on_failure": "missing customer ⇒ error"
+  },
+  {
+   "name": "get_invoices",
+   "kind": "read",
+   "agents": "billing",
+   "purpose": "Recent invoices + payment status",
+   "guards": "WHERE customer_id = session; limit ≤ 20",
+   "on_failure": "error returned to the model"
+  },
+  {
+   "name": "get_payment_status",
+   "kind": "read",
+   "agents": "billing",
+   "purpose": "Payment attempts for one invoice",
+   "guards": "invoice id regex + strict SQLi scan; same error for foreign and missing ids",
+   "on_failure": "'no such invoice'"
+  },
+  {
+   "name": "check_refund_eligibility",
+   "kind": "read",
+   "agents": "billing",
+   "purpose": "Refund policy engine (deterministic)",
+   "guards": "pure function of data + today's date",
+   "on_failure": "error returned"
+  },
+  {
+   "name": "create_refund_request",
+   "kind": "write",
+   "agents": "billing",
+   "purpose": "Files a refund request (auto-approved ≤ $100, else pending approval)",
+   "guards": "customer refund intent + dispatcher flag; eligibility re-derived; idempotent; audited",
+   "on_failure": "blocked + security event; model must explain instead"
+  },
+  {
+   "name": "get_service_status",
+   "kind": "read",
+   "agents": "technical",
+   "purpose": "Live component status",
+   "guards": "read-only",
+   "on_failure": "error returned"
+  },
+  {
+   "name": "get_user_logs",
+   "kind": "read",
+   "agents": "technical",
+   "purpose": "Error events grouped by code (≤168 h)",
+   "guards": "WHERE customer_id = session",
+   "on_failure": "error returned"
+  },
+  {
+   "name": "run_diagnostic",
+   "kind": "read",
+   "agents": "technical",
+   "purpose": "Read-only account checks",
+   "guards": "enum of checks",
+   "on_failure": "error returned"
+  },
+  {
+   "name": "create_ticket",
+   "kind": "write",
+   "agents": "technical, billing",
+   "purpose": "Opens a support ticket",
+   "guards": "only if the customer asks; idempotent for 10 min; audited",
+   "on_failure": "blocked; model sets needs_human instead"
+  },
+  {
+   "name": "get_ticket_history",
+   "kind": "read",
+   "agents": "escalation",
+   "purpose": "Recent tickets",
+   "guards": "WHERE customer_id = session",
+   "on_failure": "history omitted from the note"
+  },
+  {
+   "name": "assign_to_human",
+   "kind": "write",
+   "agents": "escalation",
+   "purpose": "Creates the review-queue row",
+   "guards": "one row per query; PII masked before storage; audited",
+   "on_failure": "reply falls back to a safe holding message"
+  }
+ ],
+ "tools_common": "Every call: per-agent allow-list, strict schema, SQLi scan, identity injected from the session, ≤12 calls/query, 10 s timeout, traced span (PII-masked).",
+ "agents": [
+  {
+   "name": "Input guard",
+   "kind": "code (no LLM)",
+   "can": "Sanitise, mask secrets and card numbers, refuse injection / SQLi / empty input, flag foreign ids",
+   "cannot": "Call tools, see the profile, produce customer-facing answers beyond fixed refusals",
+   "tools": "none",
+   "failure": "Regexes are deterministic. The optional LLM gray-zone check fails open to the regex result"
+  },
+  {
+   "name": "Dispatcher",
+   "kind": "LLM + deterministic overlay",
+   "can": "Choose ≤3 intents (incl. escalation, off_topic), urgency, sentiment, refund_requested, per-intent sub-questions",
+   "cannot": "Call tools or answer. Deterministic triggers override it",
+   "tools": "none",
+   "failure": "LLM error ⇒ keyword fallback + escalation; confidence < 0.55 ⇒ add escalation"
+  },
+  {
+   "name": "Billing agent",
+   "kind": "ReAct sub-graph",
+   "can": "Read the customer's invoices and payments, run the policy engine, file a refund request when asked and eligible",
+   "cannot": "Choose whose data to read, refund unasked, open tickets unasked, claim an action that was not done, mention other agents",
+   "tools": "get_invoices, get_payment_status, check_refund_eligibility, create_refund_request, search_knowledge_base, create_ticket",
+   "failure": "Exception ⇒ becomes a needs_human output; ≤4 iterations"
+  },
+  {
+   "name": "Technical agent",
+   "kind": "ReAct sub-graph",
+   "can": "Read logs and service status, run read-only diagnostics, search the KB, open a ticket on request",
+   "cannot": "Same limits as billing; no billing tools",
+   "tools": "search_knowledge_base, get_service_status, get_user_logs, run_diagnostic, create_ticket",
+   "failure": "As billing"
+  },
+  {
+   "name": "General agent",
+   "kind": "ReAct sub-graph",
+   "can": "Answer policy / account / product questions from the KB",
+   "cannot": "Read account data beyond the profile; no write tools",
+   "tools": "search_knowledge_base, get_customer_profile",
+   "failure": "As billing"
+  },
+  {
+   "name": "Escalation agent",
+   "kind": "fixed pipeline, 1 LLM call",
+   "can": "Read ticket history, write the handoff note, create the review row",
+   "cannot": "Resolve the issue, promise outcomes, admit fault, lower the deterministic priority floor",
+   "tools": "get_ticket_history, assign_to_human",
+   "failure": "LLM error ⇒ template note; tool error ⇒ safe holding message. Escalation never fails"
+  },
+  {
+   "name": "Validator",
+   "kind": "deterministic checks + LLM judge",
+   "can": "approve / request one revision / send to a human",
+   "cannot": "Edit the reply, call write tools, fall back to a weaker model",
+   "tools": "none",
+   "failure": "Judge unreachable ⇒ human review (fails closed)"
+  },
+  {
+   "name": "Human (staff)",
+   "kind": "person",
+   "can": "Approve, edit or reject a held draft; approve or reject a pending refund",
+   "cannot": "Be bypassed for refunds over $100 or for held drafts",
+   "tools": "review-queue API / Slack buttons (agent_staff, admin roles)",
+   "failure": "Case stays pending (see gaps: no SLA timer yet)"
+  }
+ ],
+ "orchestration": {
+  "nodes": [
+   "intake (input guard ‖ profile ‖ ticket count)",
+   "dispatcher ‖ safety model ‖ KB warm-up (parallel, then joined)",
+   "triage (topic control, escalation overlay)",
+   "fan-out: ≤2 specialists + escalation in parallel (LangGraph Send)",
+   "merge (template)",
+   "validator",
+   "deliver | revise (≤1) | human_prepare → human_wait (interrupt) → human_resolve"
+  ],
+  "rules": [
+   "Graph state is checkpointed (SQLite) so a paused human-review run survives restarts",
+   "Hard caps: 4 ReAct iterations, 12 tool calls, 1 revision, 60 s request timeout",
+   "Any unhandled error ⇒ safe fallback: holding reply + review row",
+   "Validated KB-only answers can be served from an exact-match cache (no LLM calls)"
+  ]
+ },
+ "state": [
+  {
+   "field": "query_id, customer_id, channel",
+   "meaning": "Identity of the run; customer_id comes from the JWT",
+   "written_by": "API / runner",
+   "persisted": "conversations table"
+  },
+  {
+   "field": "message / clean_message / history",
+   "meaning": "Raw text, and the sanitised text agents may see (secrets and cards masked)",
+   "written_by": "intake",
+   "persisted": "checkpoint; masked copy in conversations"
+  },
+  {
+   "field": "input",
+   "meaning": "Guard verdict: reasons, injection score, patterns, foreign ids",
+   "written_by": "intake",
+   "persisted": "trace"
+  },
+  {
+   "field": "profile, open_tickets",
+   "meaning": "Plan, tier, status; open ticket count",
+   "written_by": "intake",
+   "persisted": "checkpoint"
+  },
+  {
+   "field": "dispatch",
+   "meaning": "Intents, urgency, sentiment, confidence, refund_requested, sub-questions, forced escalation reasons",
+   "written_by": "dispatcher + overlay",
+   "persisted": "trace, conversations.result_json"
+  },
+  {
+   "field": "specialist_outputs (reducer)",
+   "meaning": "Parallel specialist drafts + evidence + confidence",
+   "written_by": "specialist nodes",
+   "persisted": "checkpoint"
+  },
+  {
+   "field": "escalation_output",
+   "meaning": "Holding reply, review id, priority",
+   "written_by": "escalation node",
+   "persisted": "human_review_queue"
+  },
+  {
+   "field": "merged",
+   "meaning": "Combined draft, evidence, sources, flags",
+   "written_by": "merge",
+   "persisted": "checkpoint"
+  },
+  {
+   "field": "validation, retry_count, feedback",
+   "meaning": "Verdict, issues, revision count",
+   "written_by": "validator / revise",
+   "persisted": "validator_audit.jsonl"
+  },
+  {
+   "field": "review_id, holding_reply, human_decision",
+   "meaning": "Human-in-the-loop handoff",
+   "written_by": "human_* nodes",
+   "persisted": "human_review_queue"
+  },
+  {
+   "field": "final_reply, status, flags",
+   "meaning": "What the customer sees and why",
+   "written_by": "deliver / runner",
+   "persisted": "conversations"
+  }
+ ],
+ "trust": {
+  "zones": [
+   {
+    "zone": "Customer & internet",
+    "trust": "untrusted",
+    "rule": "Everything typed, including ids and 'instructions'"
+   },
+   {
+    "zone": "Edge (API)",
+    "trust": "trusted code",
+    "rule": "JWT, role, rate limit, body size, schema; the customer id is taken from the token only"
+   },
+   {
+    "zone": "Input guard",
+    "trust": "trusted code",
+    "rule": "Deterministic filters before any model sees text"
+   },
+   {
+    "zone": "LLM agents",
+    "trust": "UNTRUSTED by construction",
+    "rule": "May be manipulated; hold no credentials; their outputs are proposals, not actions"
+   },
+   {
+    "zone": "Tool runtime",
+    "trust": "trusted code (enforcement point)",
+    "rule": "Allow-list, schemas, SQLi scan, identity injection, intent-gated writes, budgets, audit"
+   },
+   {
+    "zone": "Data stores",
+    "trust": "trusted",
+    "rule": "Parameterised queries scoped by customer id; KB read-only"
+   },
+   {
+    "zone": "Staff & Slack",
+    "trust": "authenticated",
+    "rule": "Role-checked endpoints; Slack requests signature-verified with replay window; only linked staff can use review buttons"
+   }
+  ],
+  "boundaries": [
+   "Customer text → agents: only through the input guard, always framed as untrusted data",
+   "Agent → tool: only through the tool runtime",
+   "Tool → database: only parameterised, customer-scoped queries",
+   "Agent → customer: only through the validator",
+   "Staff → system: only through role-checked endpoints",
+   "Logs / traces / Slack: PII and card data masked before write"
+  ]
+ },
+ "policies": [
+  {
+   "policy": "Identity",
+   "rule": "The model never chooses whose data is read; customer_id is injected from the session and a different one is blocked and logged",
+   "ids": "G-TOOL-04"
+  },
+  {
+   "policy": "Least privilege",
+   "rule": "Each agent has an allow-list of tools; write tools are further gated",
+   "ids": "G-TOOL-01, 10"
+  },
+  {
+   "policy": "Money",
+   "rule": "Refund eligibility is code; >$100 needs a human; writes are idempotent and audited",
+   "ids": "G-TOOL-06, 07, 09, 11"
+  },
+  {
+   "policy": "No unrequested actions",
+   "rule": "Refunds and tickets only when the customer asked for them",
+   "ids": "G-TOOL-10"
+  },
+  {
+   "policy": "Injection",
+   "rule": "Input guard (regex noisy-OR, gray-zone LLM check), topic control, untrusted-text framing",
+   "ids": "G-IN-05, 06, G-AGENT-01"
+  },
+  {
+   "policy": "Payment data & secrets",
+   "rule": "Card numbers, SSN, IBAN and API keys are masked before any model sees them or anything is stored",
+   "ids": "G-IN-02, 03"
+  },
+  {
+   "policy": "Grounding",
+   "rule": "Every amount, date, id and number-with-unit in a reply must exist in the evidence; unsupported 'does not support X' claims are blocked",
+   "ids": "G-OUT-04, 08"
+  },
+  {
+   "policy": "Honesty about actions",
+   "rule": "'Refund approved' only if approved; promises of actions that were not performed are blocked",
+   "ids": "G-OUT-03, 09"
+  },
+  {
+   "policy": "No leakage",
+   "rule": "Other customers' ids, internal tool names, prompt text, raw metadata never reach a reply",
+   "ids": "G-OUT-06, 07"
+  },
+  {
+   "policy": "Fail closed on quality",
+   "rule": "Validator or judge unavailable ⇒ human review, never an unverified answer; the judge never uses a weaker fallback model",
+   "ids": "G-VAL-01"
+  },
+  {
+   "policy": "Auditability",
+   "rule": "Every write and every blocked call is in audit_log / security_events; every decision is traced with PII masked",
+   "ids": "G-OBS-01, G-TOOL-07"
+  },
+  {
+   "policy": "API",
+   "rule": "JWT with roles and expiry, login lockout, rate limits, body-size cap, generic 500s",
+   "ids": "G-API-01..05"
+  }
+ ],
+ "failures": [
+  {
+   "failure": "Model provider slow / 5xx / 429",
+   "behaviour": "Retry with backoff; hedged request; fallback model (not for the validator); circuit breaker for retired models",
+   "customer_sees": "A normal answer, slightly slower",
+   "human_sees": "—"
+  },
+  {
+   "failure": "Primary model retired (HTTP 410)",
+   "behaviour": "Circuit breaker skips it; fallbacks serve; validator fails closed",
+   "customer_sees": "Answers continue; harder cases go to a human",
+   "human_sees": "Trace event llm.model_unavailable"
+  },
+  {
+   "failure": "Dispatcher fails",
+   "behaviour": "Keyword classifier + escalation",
+   "customer_sees": "Holding reply with reference",
+   "human_sees": "Case in queue with reason"
+  },
+  {
+   "failure": "A specialist fails",
+   "behaviour": "Its output becomes needs_human",
+   "customer_sees": "Holding reply (other specialists still answer)",
+   "human_sees": "Draft + reason"
+  },
+  {
+   "failure": "A tool errors or is blocked",
+   "behaviour": "Error text returned to the model to repair; blocked calls are logged",
+   "customer_sees": "A corrected answer, or an explanation",
+   "human_sees": "security_events row if blocked"
+  },
+  {
+   "failure": "Knowledge base has no answer",
+   "behaviour": "Agent says it couldn't find it; needs_human",
+   "customer_sees": "Honest 'not certain' + reference",
+   "human_sees": "Case in queue"
+  },
+  {
+   "failure": "Draft fails validation",
+   "behaviour": "One revision with the exact issues; then human review",
+   "customer_sees": "Corrected answer or holding reply",
+   "human_sees": "Draft and issues in the packet"
+  },
+  {
+   "failure": "Validator / judge unreachable",
+   "behaviour": "Human review (fail closed)",
+   "customer_sees": "Holding reply",
+   "human_sees": "Reason: judge_unavailable"
+  },
+  {
+   "failure": "Graph exception or 60 s timeout",
+   "behaviour": "Safe fallback: apology + review row",
+   "customer_sees": "Apology + reference",
+   "human_sees": "Case with error text"
+  },
+  {
+   "failure": "Safety model unreachable",
+   "behaviour": "Continue without it (extra layer only)",
+   "customer_sees": "Normal flow",
+   "human_sees": "—"
+  },
+  {
+   "failure": "Slack unavailable",
+   "behaviour": "Alert dropped; the queue still holds the case",
+   "customer_sees": "Unchanged",
+   "human_sees": "Case visible in the UI / API"
+  },
+  {
+   "failure": "Duplicate delivery / retry",
+   "behaviour": "Idempotent writes; Slack event de-duplication",
+   "customer_sees": "Unchanged",
+   "human_sees": "—"
+  },
+  {
+   "failure": "Database busy",
+   "behaviour": "Transient lock retried; atomic id allocation",
+   "customer_sees": "Unchanged",
+   "human_sees": "—"
+  }
+ ],
+ "gaps": [
+  "There is no payment processor or order system behind the tools: a refund is a record in a synthetic database, not a payout.",
+  "Pending reviews have no SLA timer, so nobody is alerted if staff never respond.",
+  "No tool changes a payment method or plan; those are guidance-only.",
+  "Escalation holding replies are English only.",
+  "The rate limiter and answer cache are per process; SQLite is single-writer (Postgres/Redis for scale).",
+  "The judge and the specialists are the same model family, so shared blind spots are possible.",
+  "This scope was written after the system was built; it documents what exists and where it falls short."
+ ]
+}

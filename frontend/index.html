@@ -3,67 +3,78 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Orbit Support</title>
-<meta name="description" content="A multi-agent customer-support assistant with guardrails, human review and guided test cases.">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='15' fill='%23111'/><circle cx='16' cy='16' r='6' fill='white'/><circle cx='25' cy='9' r='3' fill='%2338e1b0'/></svg>">
+<title>Orbit Support · Agent Console</title>
+<meta name="description" content="Watch a multi-agent customer-support system work: agents, tools, policy checks and human escalation, live.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='15' fill='%230b0f17'/><circle cx='16' cy='16' r='6' fill='%2338e1b0'/><circle cx='25' cy='9' r='3' fill='%236d8dff'/></svg>">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <header>
-  <div class="brand"><span class="logo"></span><b>Orbit Support</b><span class="tag">demo · synthetic data</span></div>
-  <div class="spacer"></div>
-  <label class="acct" id="acct-wrap" hidden><span>Signed in as</span><select id="acct"></select></label>
-  <nav id="nav" hidden>
-    <button data-v="chat" class="on">Chat</button>
-    <button data-v="staff" id="nav-staff">Review queue <i id="qn" hidden>0</i></button>
+  <div class="brand"><span class="logo"></span><b>Orbit Support</b><span class="sub">AI customer support · agent console</span></div>
+  <nav id="nav">
+    <button data-v="console" class="on">Console</button>
+    <button data-v="design">Scope &amp; design</button>
+    <button data-v="queue" id="nav-queue" hidden>Review queue <i id="qn" hidden>0</i></button>
   </nav>
-  <button id="how" class="link">How it works</button>
+  <div class="grow"></div>
+  <label class="acct" id="acct-wrap" hidden>customer <select id="acct"></select></label>
+  <span class="live" id="live"><i></i><span id="live-t">connecting…</span></span>
+  <button id="how" class="ghost">How it works</button>
 </header>
 
-<main id="v-chat" class="grid" hidden>
-  <aside class="cases">
-    <div class="intro"><h2>Try these</h2><p>Each test case picks the right demo customer for you and tells you what to look for. Or just type your own question.</p></div>
-    <div id="cases"></div>
-  </aside>
-  <section class="chat">
-    <div id="who" class="who"></div>
+<!-- ============ CONSOLE ============ -->
+<main id="v-console" class="console">
+  <section class="panel p-chat"><h3>Customer conversation <small id="who"></small></h3>
     <div id="thread" class="thread"></div>
-    <form id="composer" class="composer">
-      <textarea id="msg" rows="1" maxlength="2000" placeholder="Ask about a charge, a refund, an API error…"></textarea>
-      <button id="send" class="btn">Send</button>
-    </form>
+    <form id="composer" class="composer"><textarea id="msg" rows="1" maxlength="2000" placeholder="Type as the customer…"></textarea><button id="send" class="btn">Send</button></form>
+  </section>
+
+  <section class="panel p-net"><h3>Agent network <small id="net-hint">idle: send a message or pick a scenario</small></h3>
+    <svg id="net" viewBox="0 0 820 430" preserveAspectRatio="xMidYMid meet"></svg>
+  </section>
+
+  <section class="panel p-state"><h3>System state</h3>
+    <div id="state" class="state"></div>
+    <h3 class="sp">Agent state</h3><div id="agents" class="agents"></div>
+  </section>
+
+  <section class="panel p-trace"><h3>Live execution trace <small id="tr-total"></small></h3><div id="trace" class="trace"><p class="empty">Nothing yet. Events appear here as agents work.</p></div></section>
+  <section class="panel p-tools"><h3>Tool calls <small id="tl-total"></small></h3><div id="tools" class="tools"><p class="empty">No tool calls yet.</p></div></section>
+  <section class="panel p-sec"><h3>Security &amp; policy layer</h3><div id="sec" class="sec"></div></section>
+
+  <section class="bar">
+    <div class="scen" id="scen"></div>
+    <div class="acts"><button id="explain" class="btn alt" disabled>Explain this execution</button><button id="esc" class="btn warn" disabled>Human escalation <i id="esc-n" hidden>1</i></button></div>
+    <p class="hint" id="scen-hint">Scenarios pick the right demo customer and send a real message through the live system.</p>
   </section>
 </main>
 
-<main id="v-staff" class="grid staff" hidden>
-  <aside class="cases">
-    <div class="intro"><h2>Review queue</h2><p>Cases the AI was not allowed to finish alone: escalations, low confidence, refunds over $100.</p></div>
-    <div class="seg" id="qf"><button data-s="pending" class="on">Pending</button><button data-s="all">All</button></div>
-    <div id="queue"></div>
-  </aside>
-  <section class="detail" id="detail"><p class="empty">Select a case.</p></section>
+<!-- ============ DESIGN ============ -->
+<main id="v-design" class="page" hidden>
+  <div class="tabs" id="dtabs"></div><div id="dbody"></div>
 </main>
 
-<main id="v-login" class="login" hidden>
-  <div class="box"><h1>Sign in</h1><p class="muted">Demo accounts are disabled on this server.</p>
-    <form id="lf"><input id="cid" placeholder="client id" required><input id="sec" type="password" placeholder="client secret" required><button class="btn">Sign in</button></form><p id="lerr" class="err"></p></div>
+<!-- ============ STAFF QUEUE ============ -->
+<main id="v-queue" class="queuepage" hidden>
+  <aside class="panel"><div class="row"><h3>Review queue</h3><button class="ghost" id="qrefresh">Refresh</button></div>
+    <div class="seg" id="qf"><button data-s="pending" class="on">Pending</button><button data-s="all">All</button></div><div id="qlist"></div></aside>
+  <section class="panel" id="qdetail"><p class="empty">Select a case.</p></section>
 </main>
 
-<dialog id="dlg"><div class="dlg">
-  <h2>How a message is handled</h2>
-  <ol>
-    <li><b>Input guard</b> cleans the text, masks card numbers and secrets, and blocks injection and SQL attacks (milliseconds, no AI).</li>
-    <li><b>Dispatcher</b> works out what you need (billing, technical, general) and how urgent or upset you are. Legal threats, breaches and requests for a human always escalate.</li>
-    <li><b>Specialists</b> answer in parallel using real tools: your invoices, a refund-policy engine, error logs, service status and a knowledge base. They only ever see <i>your</i> account.</li>
-    <li><b>Validator</b> re-checks every amount, date, id and claim against the evidence. Anything unsupported is revised or sent to a human.</li>
-    <li><b>Human review</b> pauses risky cases in a queue. When staff approve, edit or reject, your chat is updated.</li>
-  </ol>
-  <p class="muted">Everything here is synthetic. Answers take several seconds because the free model endpoint is slow, and each step is traced.</p>
-  <button class="btn" id="dclose">Got it</button>
-</div></dialog>
+<aside id="drawer" class="drawer" hidden><div class="dhead"><h2>Human escalation desk</h2><button class="ghost" id="dclose2">Close</button></div><div id="dbody2"></div></aside>
+<dialog id="dlg-explain"><div class="dlg"><div id="explain-body"></div><button class="btn" data-close>Close</button></div></dialog>
+<dialog id="dlg-how"><div class="dlg">
+  <h2>How it works</h2>
+  <ol><li><b>Input guard</b> cleans the message, masks card numbers and secrets, blocks injection and SQL attacks (no AI, milliseconds).</li>
+  <li><b>Dispatcher</b> decides what you need, how urgent and upset you are; legal, security and "get me a human" always escalate.</li>
+  <li><b>Specialist agents</b> (billing, technical, general) work in parallel using real tools that can only see <i>your</i> account.</li>
+  <li><b>Policy layer</b> decides money questions in code (refund eligibility, approval limits), never the AI.</li>
+  <li><b>Validator</b> re-checks every amount, date, id and claim against the evidence; unsupported answers are revised or held.</li>
+  <li><b>Human desk</b> handles escalations and approvals; the graph pauses until a person decides.</li></ol>
+  <p class="muted">Synthetic data. The free model endpoint makes answers take several seconds.</p><button class="btn" data-close>Got it</button></div></dialog>
 <div id="toast" class="toast" hidden></div>
 <script src="config.js"></script>
-<script src="cases.js"></script>
+<script src="scenarios.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

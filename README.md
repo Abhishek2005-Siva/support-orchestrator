@@ -21,6 +21,7 @@ A customer message (REST or Slack) goes through input guardrails → a **dispatc
 |---|---|
 | see every measured number | [`reports/INDEX.md`](reports/INDEX.md) |
 | know **every guardrail / method** and which test proves it | [`docs/guardrails.md`](docs/guardrails.md) |
+| see **what the system is responsible for** (tasks, workflows, tools, agent boundaries, state, trust boundaries, security policies, failure & escalation behaviour) | [`docs/support-scope.md`](docs/support-scope.md), or the **Scope & design** tab in the UI |
 | understand the design | [`docs/architecture.md`](docs/architecture.md) |
 | read real incidents + how traces found them | [`docs/debugging-case-studies.md`](docs/debugging-case-studies.md) |
 | see what went wrong in the eval, case by case | `reports/04_eval_full.md` (failures section) and `reports/eval_runs/full/results.jsonl` |
@@ -96,13 +97,15 @@ make guardrails    # reports/02_guardrails.md      make load   # reports/06_load
 
 SQLite + in-process rate limiter/cache are single-process (use Postgres/Redis for multi-worker — compose file included, untested here because Docker isn't installed on the dev machine). Escalation holding replies are English. Alembic migrations are not set up (the seed rebuilds the schema). Slack/Langfuse were exercised in dry-run/offline mode (no workspace/keys supplied). Details: `docs/guardrails.md` §13.
 
-## Web UI & deployment
+## The agent console (web UI)
 
-`/app/` (the API redirects `/` there) is a no-build single-page UI: customer chat with live pipeline progress, a "how this was answered" trace, a staff review-queue screen (approve / edit / reject resumes the paused graph), and a guardrail lab. Set `DEMO_MODE=true` to show one-click synthetic demo logins (never with real data); set `CORS_ORIGINS` only if you host the UI on another origin. Deploy to Render with `render.yaml` (Blueprint) and set `NVIDIA_API_KEY` in the dashboard.
+Three-pane mission control: the **customer conversation** (left), a live **agent network** (centre: agents light up, packets flow along edges, tools flash, a human desk node turns amber when it is waiting), and **system state** (right: intent, confidence, urgency, sentiment, risk, agent states). Underneath, the **live execution trace**, the **tool calls** (click for arguments and result) and the **security & policy layer** (ten checks, each pass/blocked/info as it happens). Along the bottom: **scenario buttons** (duplicate payment, refund over $100, angry customer, prompt injection, someone else's data, …), **Explain this execution** (a plain-language account of what happened and why) and the **Human escalation desk** (the case exactly as the specialist sees it, with approve / edit / reject that updates the customer's chat). The **Scope & design** tab shows the support scope, workflows, tools, agent boundaries, trust boundaries, policies and failure behaviour.
+
+It is driven by real events: `POST /v1/query/stream` emits `trace` server-sent events (agent start/end, tool calls with masked arguments, guardrail decisions, validator verdicts), never prompt text. The UI is static files in `frontend/` (no build step): hosted on **Vercel**, talking to the API on **Render** (`CORS_ORIGINS`), and also served by the API at `/app/`. `DEMO_MODE=true` shows synthetic demo logins (never with real data).
 
 ## Deploy your own
 
-`render.yaml` is a Blueprint: fork the repo, then in Render choose **New → Blueprint**, select the fork and set `NVIDIA_API_KEY`. The UI is served by the same service at `/app/`. For a separate Vercel-hosted UI, set `window.API_BASE` in `frontend/index.html` and `CORS_ORIGINS` on the backend.
+Backend: `render.yaml` is a Blueprint. Fork the repo, then in Render choose **New → Blueprint**, select the fork and set `NVIDIA_API_KEY` (and `CORS_ORIGINS` to your UI's origin). Frontend: `cd frontend && npx vercel --prod`; `frontend/config.js` points `*.vercel.app` hosts at the Render API: edit the URL there for your own backend.
 
 ## License
 

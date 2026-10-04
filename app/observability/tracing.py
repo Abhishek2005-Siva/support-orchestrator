@@ -90,6 +90,19 @@ class _Writer:
         time.sleep(0.05)
 
 
+def shrink(obj: Any, depth: int = 0) -> Any:
+    """Compact, already-masked view of a payload for the live UI stream (strings clipped, lists/dicts truncated)."""
+    if depth > 4:
+        return "…"
+    if isinstance(obj, str):
+        return obj if len(obj) <= 220 else obj[:220] + "…"
+    if isinstance(obj, dict):
+        return {k: shrink(v, depth + 1) for k, v in list(obj.items())[:14]}
+    if isinstance(obj, (list, tuple)):
+        return [shrink(v, depth + 1) for v in list(obj)[:5]] + (["…"] if len(obj) > 5 else [])
+    return obj
+
+
 class SpanHandle:
     def __init__(self, record: dict, lf_obs=None):
         self.record = record
@@ -135,6 +148,27 @@ class Tracer:
         self._writer = _Writer()
         self._lf = None
         self._lf_tried = False
+        self._subs: dict[str, list] = {}
+
+    # ---- live subscribers (used by the SSE stream so a UI can watch a query execute) ----
+    def attach(self, trace_id: str, cb):
+        self._subs.setdefault(trace_id, []).append(cb)
+
+    def detach(self, trace_id: str, cb):
+        if cb in self._subs.get(trace_id, []):
+            self._subs[trace_id].remove(cb)
+        if not self._subs.get(trace_id):
+            self._subs.pop(trace_id, None)
+
+    def _pub(self, ctx: dict | None, ev: dict):
+        if not ctx or ctx["trace_id"] not in self._subs:
+            return
+        ev["t"] = round((time.perf_counter() - ctx["t0"]) * 1000)
+        for cb in list(self._subs.get(ctx["trace_id"], [])):
+            try:
+                cb(ev)
+            except Exception:
+                pass
 
     # ---- Langfuse (optional) ----
     def _langfuse(self):
@@ -162,7 +196,7 @@ class Tracer:
     async def trace(self, name: str, *, query_id: str | None = None, customer_id: str | None = None,
                     channel: str | None = None, tags: list[str] | None = None, input: Any = None):
         trace_id = query_id or uuid.uuid4().hex
-        ctx = {"trace_id": trace_id, "name": name, "customer": hash_id(customer_id) if customer_id else None,
+        ctx = {"trace_id": trace_id, "name": name, "t0": time.perf_counter(), "customer": hash_id(customer_id) if customer_id else None,
                "channel": channel, "scores": {}}
         tok = _trace_ctx.set(ctx)
         lf = self._langfuse()
@@ -209,6 +243,10 @@ class Tracer:
             "status": "ok",
         }
         tok = _span_ctx.set(span_id)
+        live = kind not in ("trace", "embedding", "retriever", "span") or name.startswith("node.")
+        if live:
+            self._pub(ctx, {"phase": "start", "id": span_id, "parent": parent, "kind": kind, "name": name,
+                            "input": None if kind == "llm" else shrink(rec["input"])})
         lf_cm, lf_obs = None, _lf_obs
         lf = self._lf if self._lf_tried else None
         if lf is not None and ctx and not _root and kind != "trace":
@@ -238,6 +276,9 @@ class Tracer:
                     pass
             if ctx and _root:
                 rec["scores"] = ctx["scores"]
+            if live:
+                self._pub(ctx, {"phase": "end", "id": span_id, "kind": kind, "name": name, "ms": rec["duration_ms"], "status": rec["status"],
+                                "error": rec.get("error"), "model": rec.get("model"), "usage": rec.get("usage"), "output": shrink(rec.get("output"))})
             self._writer.write(rec)
 
     def score(self, name: str, value: float):
@@ -248,6 +289,7 @@ class Tracer:
     def event(self, name: str, **data):
         """Point-in-time event (e.g. guardrail block) attached to the current trace."""
         ctx = _trace_ctx.get()
+        self._pub(ctx, {"phase": "event", "name": name, "data": shrink(safe_payload(data))})
         self._writer.write({
             "trace_id": ctx["trace_id"] if ctx else None, "span_id": uuid.uuid4().hex[:16], "parent_id": _span_ctx.get(),
             "name": name, "kind": "event", "ts": datetime.now(timezone.utc).isoformat(), "duration_ms": 0,

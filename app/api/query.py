@@ -100,6 +100,9 @@ async def stream_query(body: QueryRequest, user: User = Depends(customer_user)):
                 await queue.put(("error", {"detail": type(e).__name__}))
             await queue.put(None)
 
+        from app.observability.tracing import tracer
+        cb = lambda ev: queue.put_nowait(("trace", ev))   # noqa: E731  live spans / guardrail events for the console UI
+        tracer.attach(query_id, cb)
         task = asyncio.create_task(work())
         yield {"event": "accepted", "data": json.dumps({"query_id": query_id})}
         seen = 0
@@ -117,6 +120,7 @@ async def stream_query(body: QueryRequest, user: User = Depends(customer_user)):
                 break
             kind, payload = item
             yield {"event": kind, "data": json.dumps(payload, default=str)}
+        tracer.detach(query_id, cb)
         await task
 
     return EventSourceResponse(gen())

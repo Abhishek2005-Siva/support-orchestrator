@@ -56,6 +56,17 @@ async def file_approval_review(*, query_id: str, customer_id: str, message: str,
     return row.id
 
 
+async def settle_pending_refunds(customer_id: str, approved: bool, reviewer: str) -> list[m.RefundRequest]:
+    """Staff decision on a refund-approval case: move this customer's pending refund requests to approved / rejected (audited)."""
+    async with session_scope() as s:
+        rows = (await s.execute(select(m.RefundRequest).where(m.RefundRequest.customer_id == customer_id, m.RefundRequest.status == "pending_approval"))).scalars().all()
+        for r in rows:
+            r.status = "approved" if approved else "rejected"
+    for r in rows:
+        await audit(f"staff:{reviewer}", "refund_decision", query_id=None, customer_id=customer_id, args={"refund_id": r.id, "decision": r.status}, outcome="ok")
+    return rows
+
+
 async def resolve_review_row(review_id: str, *, status: str, reviewer: str, note: str | None, final_reply: str | None) -> m.HumanReview | None:
     async with session_scope() as s:
         row = await s.get(m.HumanReview, review_id)

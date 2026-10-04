@@ -167,3 +167,20 @@ async def test_explicit_refund_request_is_filed_by_policy_path_not_by_model_whim
     cid2 = customers_with("refund_small_ok")[2]
     await q(cid2, "what is your refund policy and how long do refunds take", "r2")
     assert rows(mock, "select count(*) from refund_requests where customer_id=?", cid2)[0][0] == 0
+
+
+async def test_staff_approval_settles_pending_refund_and_notifies_customer(mock):
+    cid = customers_with("refund_needs_approval")[2]
+    r = await q(cid, "please refund my last invoice, I want my money back", "ap1")
+    assert r["flags"].get("requires_human_approval") and rows(mock, "select status from refund_requests where customer_id=?", cid)[0][0] == "pending_approval"
+    out = await runner.resume_review(review_id=r["flags"]["approval_review_id"], action="approve", reviewer="alice")
+    assert out["status"] == "delivered" and "approved your refund" in out["reply"] and out["flags"]["refund_settled"]
+    assert rows(mock, "select status from refund_requests where customer_id=?", cid)[0][0] == "approved"
+    assert rows(mock, "select count(*) from audit_log where action='refund_decision'")[0][0] == 1
+    assert rows(mock, "select status, final_reply from conversations where id='ap1'")[0][0] in ("delivered", "human_review")
+
+async def test_staff_rejection_declines_refund(mock):
+    cid = customers_with("refund_needs_approval")[3]
+    r = await q(cid, "please refund my last invoice, I want my money back", "ap2")
+    out = await runner.resume_review(review_id=r["flags"]["approval_review_id"], action="reject", reviewer="alice", note="outside goodwill policy")
+    assert "could not approve" in out["reply"] and rows(mock, "select status from refund_requests where customer_id=?", cid)[0][0] == "rejected"
