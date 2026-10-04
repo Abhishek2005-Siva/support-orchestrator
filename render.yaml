@@ -14,5 +14,7 @@ services:
         value: live
       - key: DEMO_MODE       # shows one-click synthetic demo logins on the login page. Turn off for anything non-demo.
         value: "true"
+      - key: CORS_ORIGINS    # the Vercel-hosted UI
+        value: https://orbit-support-ui.vercel.app
       - key: WEB_CONCURRENCY # keep 1: rate limiter / answer cache are per process
         value: "1"

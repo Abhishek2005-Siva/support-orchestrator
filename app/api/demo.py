@@ -23,6 +23,6 @@ async def demo_accounts():
     for tag, label, hint in PICKS:
         cid = next((c for c, v in man.items() if tag in v["tags"]), None)
         if cid:
-            out.append({"label": label, "hint": hint, "client_id": cid, "secret": creds[cid], "role": "customer"})
-    out.append({"label": "Support staff", "hint": "Review queue: approve, edit or reject AI drafts", "client_id": "staff-alice", "secret": creds["staff-alice"], "role": "agent_staff"})
+            out.append({"key": tag, "label": label, "hint": hint, "client_id": cid, "secret": creds[cid], "role": "customer"})
+    out.append({"key": "staff", "label": "Support staff", "hint": "Review queue: approve, edit or reject AI drafts", "client_id": "staff-alice", "secret": creds["staff-alice"], "role": "agent_staff"})
     return out
