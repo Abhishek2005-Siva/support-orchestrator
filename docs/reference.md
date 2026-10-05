@@ -7,9 +7,9 @@ The short overview is in the [README](../README.md). This page holds the details
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp .env.example .env            # put NVIDIA_API_KEY=nvapi-... in it (never commit it)
-make seed                       # synthetic backend (200 customers, 879 invoices, edge cases) + golden dataset
-make test                       # 145 offline tests: unit + guardrails + graph (mock LLM) + API + Slack
-make live-test                  # 42 acceptance tests against the real NVIDIA API (per agent)
+make seed                       # simulated bank (300 customers, ~13.5k ledger rows, policies, knowledge graph) + golden dataset
+make test                       # 181 offline tests: unit + guardrails + graph (mock LLM) + API + Slack
+make live-test                  # 45 acceptance tests against the real NVIDIA API (per agent)
 make run                        # API + console on :8000  (docs at /docs, UI at /app/)
 ```
 
@@ -31,6 +31,7 @@ curl -s localhost:8000/v1/query -H "Authorization: Bearer $TOKEN" -H 'content-ty
 | `GET /v1/query/{id}` · `POST /v1/query/stream` | status/result · SSE progress and live `trace` events |
 | `GET /v1/review-queue` · `POST /v1/review-queue/{id}/resolve` | staff: list / approve · edit · reject (resumes the paused graph) |
 | `POST /slack/events` · `/slack/interactions` | Slack Events API + review buttons (signature-verified) |
+| `GET /v1/data/overview` · `/table/{name}` · `/policies` · `/graph` · `/verifications` | scoped read-only views of the bank tables, policies, knowledge graph and verification records (customers see only their own rows; internal columns never exposed) |
 | `GET /demo/accounts` | synthetic demo logins (only when `DEMO_MODE=true`) |
 | `GET /healthz` · `/metrics` | health · Prometheus |
 
@@ -46,9 +47,9 @@ Default model: `nvidia/nemotron-3-ultra-550b-a55b` (the original `nemotron-3-sup
 
 ## Evaluation methodology
 
-1. **Golden set**: `evals/golden.jsonl`, 260 cases built by `evals/build_golden.py` from three non-LLM ground truths: the seed manifest (invoice ids, amounts, failure reasons, days since payment), the knowledge-base pages, and Kaggle corpora (Bitext support phrasing, prompt-injection/jailbreak sets, SQLi set).
-2. **Hold-out set**: `evals/holdout.jsonl`, 70 cases written *after* the golden set was frozen and never tuned against. Its first-pass result is the unbiased figure.
-3. **Deterministic checks**: required facts (regex), forbidden claims, DB side effects (refund created? status? ticket? review row and priority?), routing, leak patterns.
+1. **Golden set**: `evals/golden.jsonl`, 254 cases built by `evals/build_golden.py` from non-LLM ground truths: the seed manifest (transaction, transfer and card ids, amounts, merchants, expected decision), the policy table and help articles, and attack corpora (prompt-injection and SQLi sets from Kaggle).
+2. **Hold-out set**: `evals/holdout.jsonl`, 81 cases (different customers and phrasing, plus real PolyAI Banking77 messages) written *after* the golden set was frozen and never tuned against. Its first-pass result is the unbiased figure.
+3. **Deterministic checks**: required facts (regex), forbidden claims, DB side effects (dispute filed and its status? provisional credit? card blocked? fee waived? transfer cancelled? review row and priority?), routing, leak patterns.
 4. **Independent faithfulness judge** (`--judge`): separate prompt; the reference is the customer's real DB rows plus KB chunks retrieved from the *reply*, not from the agent's evidence.
 5. **Honest reporting**: failures are listed case by case. Label noise in the Kaggle-derived routing sets is documented.
 
@@ -62,11 +63,11 @@ Every number and how far to trust it: [`reports/INDEX.md`](../reports/INDEX.md).
 ## Known limitations
 
 - SQLite, the in-process rate limiter and the answer cache are single-process. Use Postgres and Redis for several workers (a compose file is included, untested here because Docker isn't installed on the dev machine).
-- No payment processor sits behind refunds (the system records approved refunds, it does not move money). No SLA timers on pending reviews. No payment-method or plan-change tools.
+- No real payment rail or core-banking system sits behind the tools: a provisional credit or fee reversal is a ledger entry in a synthetic database. No SLA timers on pending reviews. Only duplicate and unauthorised disputes are automated.
 - Escalation holding replies are English only.
 - Alembic migrations are not set up (the seed rebuilds the schema).
 - Slack and Langfuse were exercised in dry-run/offline mode (no workspace or keys supplied).
-- The judge and the agents share a model family; deterministic and DB-state checks carry the refund and escalation numbers.
+- The judge and the agents share a model family; deterministic and DB-state checks carry the action and escalation numbers.
 - More: `docs/guardrails.md` §13.
 
 ## Deploy your own

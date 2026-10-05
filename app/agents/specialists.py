@@ -26,7 +26,7 @@ async def fetch_profile(customer_id: str) -> dict:
     return r.data if r.ok else {}
 
 
-_TRANSFERISH = re.compile(r"transfer|wire|\bach\b|bank transfer|\bsent\b[^?!]{0,40}\bto\b|payment to|remittance|haven'?t (?:received|got)|not (?:arrived|received)|hasn'?t arrived|standing order|\b(?:stop|cancel|recall)\b[^?!]{0,30}\$", re.I)
+_TRANSFERISH = re.compile(r"transfer|wire|\bach\b|bank transfer|\bsent\b[^?!]{0,40}\bto\b|payment to|remittance|(?:haven|hasn)'?t (?:received|got|arrived)|never (?:got|received)|not (?:arrived|received|showing|delivered)|isn'?t (?:showing|delivered)|standing order|\b(?:stop|cancel|recall)\b[^?!]{0,30}\$", re.I)
 
 
 _ACCOUNT_SPECIFIC = re.compile(r"\bmy\b|\bI\b|\bI'm\b|\bI've\b|\bme\b|\$\s?\d|\b(?:last|latest|yesterday|today|recent)\b|\bwe\b|\bour\b|TXN-|TRF-|CARD-", re.I)
@@ -40,10 +40,7 @@ def prefetch_plan(agent: str, message: str, sub_question: str | None = None) -> 
     if agent in ("payments", "cards") and not _ACCOUNT_SPECIFIC.search(message):
         return [kb]      # a how-to / policy question needs no account data (and stays cacheable)
     if agent == "payments":
-        plan = [("get_transactions", {"days": 60, "limit": 16}), kb]
-        if _TRANSFERISH.search(message):
-            plan.insert(1, ("get_transfer_status", {}))
-        return plan
+        return [("get_transactions", {"days": 60, "limit": 16}), ("get_transfer_status", {}), kb]   # cheap local reads: the customer may not say 'transfer' ("where did my $775 go?")
     if agent == "cards":
         return [("get_cards", {}), ("get_transactions", {"days": 45, "limit": 16}), kb]
     return [kb]
@@ -119,7 +116,8 @@ def staged_followup(agent: str, message: str, action_requested: bool):
         cards = _rows_of(results, "get_cards")
         memo.update(txns=txns, trfs=trfs, cards=cards)
         if agent == "payments":
-            if _TRANSFERISH.search(message) and trfs:
+            amts0 = _amounts(message)
+            if (_TRANSFERISH.search(message) or any(_cents(t.get("amount", "")) in amts0 for t in trfs)) and trfs and not _DUP.search(message) and not _FEE.search(message):
                 amts = _amounts(message)
                 pick = next((t for t in trfs if _cents(t.get("amount", "")) in amts), None) if amts else None
                 if CANCEL_RX.search(message):
