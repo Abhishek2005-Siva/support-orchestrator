@@ -19,7 +19,8 @@ async function renderData() {
   dataTabs(); const el = $("#databody");
   if (!dtok()) { el.innerHTML = `<p class="empty">Sign in as a customer first.</p>`; return; }
   el.innerHTML = `<p class="empty">Loading…</p>`;
-  try { await ({ policies: renderPolicies, database: renderDatabase, graph: renderGraph, verifs: renderVerifs })[DS.tab](el); } catch (e) { el.innerHTML = `<p class="err">Could not load: ${esc(e.message)}</p>`; }
+  try { await ({ policies: renderPolicies, database: renderDatabase, graph: renderGraph, verifs: renderVerifs })[DS.tab](el); }
+  catch (e) { el.innerHTML = `<p class="err">${e.status === 404 || e.status === 502 || e.status === 503 ? "The bank backend is updating or waking up. Retry in a minute." : "Could not load: " + esc(e.message)} <button class="btn alt" id="dretry">Retry</button></p>`; $("#dretry").onclick = renderData; }
 }
 
 /* ---------- policies ---------- */

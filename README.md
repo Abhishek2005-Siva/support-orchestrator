@@ -21,6 +21,10 @@ Stack: LangGraph · FastAPI · Pydantic · SQLite · NVIDIA NIM (free API) · La
 
 ![Console](docs/img/console.png)
 
+*The knowledge graph after a live duplicate-charge run: the highlighted nodes are the checks, policies, regulations, help articles and action the verification consulted.*
+
+![Knowledge graph](docs/img/graph.png)
+
 ## Results (measured; reports in [`reports/`](reports/))
 
 | | result |
