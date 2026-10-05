@@ -57,7 +57,6 @@ class Settings(BaseSettings):
     dispatcher_confidence_threshold: float = 0.55
     max_revisions: int = 1  # each revision costs a full specialist+validator round (~6-10 s); bounded for latency, revisit with eval data
     max_react_iterations: int = 4
-    refund_auto_limit_usd: float = 100.0  # refunds above this require human approval
     kb_min_score: float = 0.15  # below this, KB retrieval counts as "no answer found" (calibrated in reports/01)
     kb_bm25_weight: float = 0.05
     kb_category_bonus: float = 0.06  # soft preference for the agent's own topic; the dispatcher can mislabel, so it is never a hard filter

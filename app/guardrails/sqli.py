@@ -63,7 +63,7 @@ _FREETEXT_PATTERNS: list[tuple[str, re.Pattern]] = [(n, re.compile(p, re.I)) for
     ("os_exec", r"\b(xp_cmdshell|load_file|into\s+(out|dump)file|utl_http|lo_import|copy\s+\w+\s+from\s+program)\b"),
     ("hex_blob", r"\b0x[0-9a-f]{12,}\b"),
     ("char_concat", r"\b(char|chr|concat|concat_ws|group_concat|string_agg)\s*\(\s*\d"),
-    ("select_from_probe", r"\bselect\b[^.!?]{0,60}\bfrom\b\s+(users?|customers?|invoices?|payments?|passwords?|credentials?|api_credentials|audit_log|tickets)\b"),
+    ("select_from_probe", r"\bselect\b[^.!?]{0,60}\bfrom\b\s+(users?|customers?|accounts?|cards?|transactions?|transfers?|disputes?|passwords?|credentials?|api_credentials|audit_log|tickets)\b"),
     ("having_groupby_probe", r"\b(order|group)\s+by\s+\d+\s*(--|#|;)"),
     ("version_probe", r"(@@version|version\(\)|sqlite_version\(\)|current_user\(\)|database\(\))"),
     ("numeric_tautology", r"\b(\d{2,})\s*=\s*\1\b"),

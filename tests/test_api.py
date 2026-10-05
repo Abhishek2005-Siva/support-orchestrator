@@ -31,7 +31,7 @@ async def token(c, cid, secret=None):
     assert r.status_code == 200, r.text
     return {"Authorization": "Bearer " + r.json()["access_token"]}
 
-def cust(tag="failed_payment", i=0): return customers_with(tag)[i]
+def cust(tag="transfer_pending", i=0): return customers_with(tag)[i]
 
 
 # ---------------- auth ----------------
@@ -72,9 +72,9 @@ async def test_role_enforcement(client):
 # ---------------- queries ----------------
 async def test_query_roundtrip_identity_from_token(client):
     cid = cust(); h = await token(client, cid)
-    r = await client.post("/v1/query", json={"message": "why did my payment fail, what is on my invoice?"}, headers=h)
+    r = await client.post("/v1/query", json={"message": "where is my transfer? it has not arrived"}, headers=h)
     assert r.status_code == 200 and r.json()["status"] == "delivered"
-    assert MANIFEST["customers"][cid]["facts"]["invoice_id"] in r.json()["reply"]
+    assert MANIFEST["customers"][cid]["facts"]["transfer_id"] in r.json()["reply"] or "business day" in r.json()["reply"]
     assert "X-RateLimit-Remaining" in r.headers and "X-Request-ID" in r.headers
     # a body that tries to choose the customer is rejected outright
     r = await client.post("/v1/query", json={"message": "hello", "customer_id": cust(i=1)}, headers=h)
@@ -83,7 +83,7 @@ async def test_query_roundtrip_identity_from_token(client):
 async def test_other_customer_cannot_read_query_staff_can(client):
     a, b = cust(), cust(i=1)
     ha, hb = await token(client, a), await token(client, b)
-    qid = (await client.post("/v1/query", json={"message": "why did my payment fail, invoice?"}, headers=ha)).json()["query_id"]
+    qid = (await client.post("/v1/query", json={"message": "where is my transfer? it has not arrived"}, headers=ha)).json()["query_id"]
     assert (await client.get(f"/v1/query/{qid}", headers=ha)).status_code == 200
     assert (await client.get(f"/v1/query/{qid}", headers=hb)).status_code == 404
     assert (await client.get(f"/v1/query/{qid}", headers=await token(client, "staff-alice"))).status_code == 200
@@ -116,7 +116,7 @@ async def test_rate_limit_429_with_retry_after(client, monkeypatch):
 
 async def test_async_mode_returns_202_then_completes(client):
     h = await token(client, cust())
-    r = await client.post("/v1/query", json={"message": "why did my payment fail, invoice?", "wait": False}, headers=h)
+    r = await client.post("/v1/query", json={"message": "where is my transfer? it has not arrived", "wait": False}, headers=h)
     assert r.status_code == 202 and r.json()["status"] == "processing"
     first = await client.get(f"/v1/query/{r.json()['query_id']}", headers=h)
     assert first.status_code == 200          # immediate poll must not 404
@@ -129,7 +129,7 @@ async def test_async_mode_returns_202_then_completes(client):
 async def test_sse_stream_emits_events_and_result(client):
     h = await token(client, cust())
     events = []
-    async with client.stream("POST", "/v1/query/stream", json={"message": "why did my payment fail, invoice?"}, headers=h) as r:
+    async with client.stream("POST", "/v1/query/stream", json={"message": "where is my transfer? it has not arrived"}, headers=h) as r:
         async for line in r.aiter_lines():
             if line.startswith("event:"): events.append(line.split(":", 1)[1].strip())
     assert events[0] == "accepted" and "result" in events
@@ -145,13 +145,13 @@ async def test_unhandled_error_returns_generic_500(client, monkeypatch):
 
 # ---------------- human review over the API ----------------
 async def test_escalation_to_staff_resolution_to_customer_poll(client):
-    cid = cust("double_charge"); h = await token(client, cid); staff = await token(client, "staff-alice")
+    cid = cust("dup_posted"); h = await token(client, cid); staff = await token(client, "staff-alice")
     r = (await client.post("/v1/query", json={"message": "I'm furious!!! I want to speak to a manager NOW"}, headers=h)).json()
     assert r["status"] == "human_review" and r["review_id"] in r["reply"]
     q = (await client.get("/v1/review-queue", headers=staff)).json()
     assert any(i["review_id"] == r["review_id"] for i in q["items"])
     assert (await client.post(f"/v1/review-queue/{r['review_id']}/resolve", json={"action": "edit"}, headers=staff)).status_code == 422
-    res = await client.post(f"/v1/review-queue/{r['review_id']}/resolve", json={"action": "edit", "reply": "Hi, I'm Alice from billing; I've reviewed your account and fixed the duplicate."}, headers=staff)
+    res = await client.post(f"/v1/review-queue/{r['review_id']}/resolve", json={"action": "edit", "reply": "Hi, I'm Alice from the payments team; I've reviewed your account and fixed it."}, headers=staff)
     assert res.status_code == 200 and res.json()["status"] == "delivered"
     again = await client.post(f"/v1/review-queue/{r['review_id']}/resolve", json={"action": "reject"}, headers=staff)
     assert again.status_code == 409
@@ -161,7 +161,7 @@ async def test_escalation_to_staff_resolution_to_customer_poll(client):
 
 async def test_health_and_metrics(client):
     assert (await client.get("/healthz")).json()["status"] == "ok"
-    h = await token(client, cust()); await client.post("/v1/query", json={"message": "why did my payment fail, invoice?"}, headers=h)
+    h = await token(client, cust()); await client.post("/v1/query", json={"message": "where is my transfer? it has not arrived"}, headers=h)
     m = (await client.get("/metrics")).text
     assert "support_queries_total" in m and "support_query_latency_seconds_bucket" in m and "support_llm_calls" in m
 
@@ -188,7 +188,7 @@ async def test_slack_signature_challenge_and_replay(client):
 
 async def test_slack_message_from_linked_user_gets_threaded_answer(client, db, tmp_path):
     cid = cust(); await link(db, "U111", cid)
-    ev = {"type": "event_callback", "event_id": "Ev1", "event": {"type": "message", "channel_type": "im", "user": "U111", "channel": "D1", "ts": "1700000000.000100", "text": "why did my payment fail, what is on my invoice?"}}
+    ev = {"type": "event_callback", "event_id": "Ev1", "event": {"type": "message", "channel_type": "im", "user": "U111", "channel": "D1", "ts": "1700000000.000100", "text": "where is my transfer? it has not arrived"}}
     body = json.dumps(ev).encode()
     assert (await client.post("/slack/events", content=body, headers=sign(body))).json()["ok"]
     dup = await client.post("/slack/events", content=body, headers=sign(body))
@@ -199,10 +199,10 @@ async def test_slack_message_from_linked_user_gets_threaded_answer(client, db, t
         out = outbox(tmp_path / "logs")
         if out: break
         await asyncio.sleep(0.05)
-    assert len(out) == 1 and out[0]["payload"]["thread_ts"] == "1700000000.000100" and MANIFEST["customers"][cid]["facts"]["invoice_id"] in out[0]["payload"]["text"]
+    assert len(out) == 1 and out[0]["payload"]["thread_ts"] == "1700000000.000100" and ("business day" in out[0]["payload"]["text"] or MANIFEST["customers"][cid]["facts"]["transfer_id"] in out[0]["payload"]["text"])
 
 async def test_slack_unlinked_user_refused_and_bots_ignored(client, tmp_path):
-    ev = {"type": "event_callback", "event_id": "Ev2", "event": {"type": "message", "channel_type": "im", "user": "UXXX", "channel": "D2", "ts": "1.1", "text": "show me invoices"}}
+    ev = {"type": "event_callback", "event_id": "Ev2", "event": {"type": "message", "channel_type": "im", "user": "UXXX", "channel": "D2", "ts": "1.1", "text": "show me my transactions"}}
     body = json.dumps(ev).encode(); await client.post("/slack/events", content=body, headers=sign(body))
     for _ in range(60):
         out = outbox(tmp_path / "logs")
@@ -214,7 +214,7 @@ async def test_slack_unlinked_user_refused_and_bots_ignored(client, tmp_path):
     assert len(outbox(tmp_path / "logs")) == 1
 
 async def test_slack_review_buttons_staff_only_and_resolution_goes_back_to_thread(client, db, tmp_path):
-    cid = cust("double_charge"); await link(db, "UCUST", cid); await link(db, "USTAFF", "staff-alice")
+    cid = cust("dup_posted"); await link(db, "UCUST", cid); await link(db, "USTAFF", "staff-alice")
     ev = {"type": "event_callback", "event_id": "Ev4", "event": {"type": "app_mention", "user": "UCUST", "channel": "C9", "ts": "5.5", "text": "<@BOT> I'm furious!!! I want a manager NOW"}}
     body = json.dumps(ev).encode(); await client.post("/slack/events", content=body, headers=sign(body))
     for _ in range(80):
@@ -241,14 +241,14 @@ async def test_stream_emits_live_trace_events_for_the_console(client):
     """The mission-control UI watches agents/tools/guardrails through 'trace' SSE events."""
     h = await token(client, cust())
     evs = []
-    async with client.stream("POST", "/v1/query/stream", json={"message": "why did my payment fail, what is on my invoice?"}, headers=h) as r:
+    async with client.stream("POST", "/v1/query/stream", json={"message": "where is my transfer? it has not arrived"}, headers=h) as r:
         name = None
         async for line in r.aiter_lines():
             if line.startswith("event:"): name = line.split(":", 1)[1].strip()
             elif line.startswith("data:") and name == "trace": evs.append(json.loads(line[5:]))
     starts = {(e["kind"], e["name"]) for e in evs if e["phase"] == "start"}
-    assert ("guardrail", "guard.input") in starts and ("agent", "agent.dispatcher") in starts and ("agent", "agent.billing") in starts and ("agent", "agent.validator") in starts
-    assert any(e["phase"] == "end" and e["name"] == "tool.get_invoices" and e["output"]["ok"] for e in evs)
+    assert ("guardrail", "guard.input") in starts and ("agent", "agent.dispatcher") in starts and ("agent", "agent.payments") in starts and ("agent", "agent.validator") in starts
+    assert any(e["phase"] == "end" and e["name"] == "tool.get_transfer_status" and e["output"]["ok"] for e in evs)
     assert all("t" in e for e in evs) and "messages" not in json.dumps(evs)       # no prompt content leaves the server
 
 async def test_stream_trace_for_blocked_input_shows_the_guard_decision(client):

@@ -29,7 +29,7 @@ _STOP = set("a an and are as at be but by can do does for from has have how i if
             "their there this to was we what when where which who why will with you your please hi hello thanks thank "
             "need want would could should get got tell about know information info help question questions give show let see look find".split())
 _TOKEN = re.compile(r"[a-z0-9_]+")
-CATEGORY_GROUPS = {"billing": {"billing", "policy"}, "technical": {"technical", "policy"}, "general": {"general", "policy", "billing"}}
+CATEGORY_GROUPS = {"payments": {"payments", "policy"}, "cards": {"cards", "policy"}, "general": {"general", "policy", "payments", "cards"}}
 
 
 def _stem(w: str) -> str:

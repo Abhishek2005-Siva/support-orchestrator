@@ -144,7 +144,7 @@ async def _prefetch(agent: str, plan: list[tuple[str, dict]], ctx: ToolContext, 
         return []
     msgs: list[dict] = []
     stage, n = plan, 0
-    while stage and n < 3:
+    while stage and n < 5:
         calls = [(f"pre_{n}_{i}", name, args) for i, (name, args) in enumerate(stage)]
         results = await asyncio.gather(*[execute_tool(agent, nm, a, ctx) for _, nm, a in calls])
         msgs += [{"role": "assistant", "content": None,
@@ -181,6 +181,9 @@ async def run_react_agent(agent: str, system: str, user: str, ctx: ToolContext,
         if not parsed.needs_human and UNCERTAIN.search(first):   # a caveat after a real answer is fine; an answer that IS the caveat is not
             parsed = parsed.model_copy(update={"needs_human": True, "needs_human_reason": parsed.needs_human_reason or "specialist expressed uncertainty",
                                                "confidence": min(parsed.confidence, 0.5)})
+        if any(e["tool"] == "verify_transaction_issue" and isinstance(e.get("result"), dict) and e["result"].get("decision") == "human" for e in ctx.evidence) \
+                and not parsed.needs_human and not ctx.flags.get("requires_human_approval"):  # a verification that says "human" is a deterministic hand-off, whatever the model wrote
+            parsed = parsed.model_copy(update={"needs_human": True, "needs_human_reason": parsed.needs_human_reason or "verification requires a specialist"})
         parsed = parsed.model_copy(update={"reply": clean_text(parsed.reply)})
         sources = list(dict.fromkeys(x for e in ctx.evidence for x in (e["source"] if isinstance(e["source"], list) else [e["source"]])))
         resp = SpecialistResponse(

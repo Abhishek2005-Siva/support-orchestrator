@@ -3,13 +3,15 @@
 Each check has an id; every one is re-derived from the evidence (tool results + KB text), NOT from what the model claims.
   G-OUT-01  PII / secrets: reply must not contain other people's PII, full card numbers, SSNs, IBANs or API keys
   G-OUT-02  forbidden promises / guarantees; liability admissions
-  G-OUT-03  premature or unsupported action claims: "refund approved/issued" without a matching approved refund in evidence
-  G-OUT-04  numeric grounding: every $ amount, date, document id (INV-/REF-/TCK-/HRQ-/PAY-) and number-with-unit
-            (e.g. "14 days", "600 requests/min") must appear in the evidence or the customer's own message
+  G-OUT-03  premature or unsupported action claims: "credit issued", "dispute filed", "card blocked", "transfer cancelled", "fee reversed"
+            without the matching successful action in the evidence (a pending approval is not "issued")
+  G-OUT-04  numeric grounding: every $ amount, date, document id (TXN-/DSP-/TRF-/CARD-/VER-/TCK-/HRQ-/POL-) and number-with-unit
+            (e.g. "10 business days", "60 days") must appear in the evidence or the customer's own message
   G-OUT-05  account facts require account evidence: ids/amounts about the customer's account need a db: source
   G-OUT-06  hygiene: no tool names, prompt/rule text, JSON/code fences, role-play compliance, profanity, empty/over-long reply
   G-OUT-07  other customers' ids must never be mentioned
-  G-OUT-09  unfulfilled action promises ("I'll submit the refund now" without a write action in evidence)
+  G-OUT-09  unfulfilled action promises ("I'll file the dispute now" without a write action in evidence)
+  G-OUT-10  no internal risk information: never mention AML / compliance reviews, risk flags or fraud scores to a customer
   G-OUT-08  unsupported NEGATIVE claims ("Orbit does not offer X") need evidence for X
 """
 from __future__ import annotations
@@ -25,7 +27,7 @@ from app.schemas.models import ValidationIssue
 MAX_REPLY_CHARS = 1400
 
 _MONEY = re.compile(r"\$\s?(\d[\d,]*(?:\.\d{1,2})?)")
-_DOC_ID = re.compile(r"\b(?:INV|REF|TCK|HRQ|PAY)-\d{4,8}\b")
+_DOC_ID = re.compile(r"\b(?:(?:TXN|DSP|TRF|VER|TCK|HRQ|FRD|ACC)-\d{6,8}|CARD-\d{7}|POL-[A-Z]{3}-\d{2})\b")
 _CUST_ID = re.compile(r"\bCUST-\d{6}\b")
 _ISO_DATE = re.compile(r"(?<!\d)(20\d{2})-(\d{2})-(\d{2})(?!\d)")  # also matches inside 2026-10-01T06:00
 _MONTHS = "january february march april may june july august september october november december".split()
@@ -51,14 +53,18 @@ _NEGATIVE = re.compile(
 _FIRST_PERSON = re.compile(r"\bI(?:'m| am| do| don't| cannot| can't| couldn't| could not| have no| haven't| didn't)\b|\bI (?:don't|do not|cannot|can't|couldn't|could not) ", re.I)
 _HEDGED = re.compile(r"knowledge base|documentation|docs\b|help center|available (?:information|docs)|my (?:information|records)", re.I)
 _STOPW = set("a an the any for with and or of to in on at is are be as it its this that your you our we orbit native natively currently yet option feature support supports supported offer offers offered".split())
-_REFUND_DONE = re.compile(
-    r"(?:\b(?:has|have) been (?:approved|issued|processed|refunded|completed|sent)\b|\bI(?:'ve| have) (?:approved|issued|processed|refunded)\b|"
-    r"\b(?:refund|credit) (?:is|was) (?:approved|issued|processed|on its way|complete)\b|\byour refund is on (?:its|the) way\b)", re.I)
-_ARCH_LEAK = re.compile(r"\bI can only (?:answer|help with|handle|assist with) (?:the )?(?:billing|technical|general|account)\b|\b(?:ask|contact|speak to|check with) (?:the |our )?(?:technical|billing|general) (?:specialist|assistant|agent|bot)\b|\banother specialist\b|\bother specialists?\b", re.I)
+_CREDIT_DONE = re.compile(r"(?:\b(?:provisional )?credit(?: of \$?[\d,.]+)? (?:has been|was|is|has now been|is now) (?:posted|issued|applied|added|approved|credited|in your account)\b|"
+                          r"\bI(?:'ve| have) (?:issued|posted|credited|refunded|reversed|waived|approved)\b|\b(?:fee|charge) (?:has been|was) (?:reversed|waived|refunded|credited|removed)\b|"
+                          r"\b(?:refund|credit|reversal)\b[^.!?]{0,40}\b(?:has|have) been (?:approved|issued|processed|refunded|credited|posted|completed|sent)\b|"
+                          r"\b(?:refund|credit) (?:is|was) (?:approved|issued|processed|on its way|complete)\b|\bhas been (?:credited|refunded) to your account\b)", re.I)
+_DISPUTE_FILED = re.compile(r"\bI(?:'ve| have) (?:filed|opened|submitted|raised|started|created) (?:a |your |the )?dispute\b|\bdispute (?:DSP-\d+ )?(?:has been|was) (?:filed|opened|submitted|raised|created)\b", re.I)
+_BLOCK_DONE = re.compile(r"\bI(?:'ve| have) (?:now )?(?:blocked|frozen|locked)\b|\b(?:your|the) (?:\w+ )?card (?:ending \d{4} )?(?:is|has been|was) (?:now )?(?:blocked|frozen|locked)\b", re.I)
+_CANCEL_DONE = re.compile(r"\bI(?:'ve| have) cancell?ed\b|\b(?:the|your) (?:\w+ )?transfer (?:\w+ )?(?:has been|was|is now) cancell?ed\b", re.I)
+_REPLACE_DONE = re.compile(r"\b(?:replacement|new) card (?:has been|was|is) (?:ordered|requested|on its way|issued)\b|\bI(?:'ve| have) (?:ordered|requested|issued) (?:a |your )?(?:replacement|new) card\b", re.I)
+_RISK_LEAK = re.compile(r"\bAML\b|money[- ]laundering|risk flag|fraud score|\bSAR\b|suspicious activity report|compliance (?:hold|review|flag)|internal (?:review|flag)|under (?:an? )?(?:internal|compliance) review|flagged (?:you|your account) (?:as|for)", re.I)
+_ARCH_LEAK = re.compile(r"\bI can only (?:answer|help with|handle|assist with) (?:the )?(?:payments|cards|general|account)\b|\b(?:ask|contact|speak to|check with) (?:the |our )?(?:payments|cards|general) (?:specialist|assistant|agent|bot)\b|\banother specialist\b|\bother specialists?\b", re.I)
 _TRANSFER_PROMISE = re.compile(r"\bI(?:'ll| will| need to| can| am going to|'m going to)\s+(?:need to\s+)?(?:transfer|connect|hand|pass|forward|escalate)\s+you\b", re.I)
-_PROMISED_ACTION = re.compile(r"\bI(?:'ll| will|'m going to| am going to)\s+(?:now\s+|go ahead and\s+|proceed to\s+|immediately\s+)?(?:submit|process|create|file|issue|initiate|raise|open|start|send)\b", re.I)
-_REFUND_FILED = re.compile(r"\bI(?:'ve| have) (?:created|opened|filed|submitted|raised) (?:a |your |the )?refund (?:request|case)\b", re.I)
-_REFUND_WORD = re.compile(r"\brefund", re.I)
+_PROMISED_ACTION = re.compile(r"\bI(?:'ll| will|'m going to| am going to)\s+(?:now\s+|go ahead and\s+|proceed to\s+|immediately\s+)?(?:submit|process|create|file|issue|initiate|raise|open|start|send|block|cancel|waive|reverse|order|dispute|credit)\b", re.I)
 _INTERNAL = [re.compile(p, re.I) for p in [
     r"\bHARD RULES\b", r"\bsystem prompt\b", r"<\/?customer_message>", r"\btool (?:result|call)s?\b", r"\bfunction call\b",
     r"```", r"^\s*[{\[]\s*\"", r"\bneeds_human\b", r"\bconfidence\s*[:=]\s*\d", r"\bas an ai (?:language )?model\b", r"\bdeveloper mode\b", r"\bDAN\b", r"\bjailbr",
@@ -158,15 +164,25 @@ def check_output(reply: str, ctx: OutputContext) -> list[ValidationIssue]:
 
     ev_txt = evidence_text(ctx.evidence)
     # G-OUT-03 action claims vs evidence
-    if not ctx.is_template and _REFUND_WORD.search(text):
-        refunds = [e["result"] for e in ctx.evidence if e.get("tool") == "create_refund_request" and isinstance(e.get("result"), dict)]
-        approved = [r for r in refunds if r.get("status") == "approved"]
-        pending = [r for r in refunds if r.get("status") == "pending_approval"]
-        if _REFUND_DONE.search(text) and not approved:
-            add("unsupported_refund_claim" if not pending else "premature_refund_claim", "critical",
-                "reply says a refund was approved/issued but evidence shows " + ("only a pending request" if pending else "no approved refund"))
-        if _REFUND_FILED.search(text) and not refunds:
-            add("unsupported_refund_claim", "critical", "reply says a refund request was filed but no create_refund_request evidence exists")
+    def ok_calls(name):
+        return [e["result"] for e in ctx.evidence if e.get("tool") == name and isinstance(e.get("result"), dict)]
+    if not ctx.is_template:
+        disputes, fees = ok_calls("file_dispute"), ok_calls("reverse_fee")
+        paid = [d for d in disputes if d.get("status") == "provisional_credit_issued"] + fees
+        pending = [d for d in disputes if d.get("status") == "pending_approval"]
+        if _CREDIT_DONE.search(text) and not paid:
+            add("premature_credit_claim" if pending else "unsupported_credit_claim", "critical",
+                "reply says a credit/refund/reversal was issued but evidence shows " + ("only a dispute pending approval" if pending else "none"))
+        if _DISPUTE_FILED.search(text) and not disputes:
+            add("unsupported_action_claim", "critical", "reply says a dispute was filed but no file_dispute evidence exists")
+        if _BLOCK_DONE.search(text) and not ok_calls("block_card") and '"status": "blocked"' not in ev_txt and '"status": "lost"' not in ev_txt:
+            add("unsupported_action_claim", "critical", "reply says a card was blocked but no block_card evidence exists")
+        if _CANCEL_DONE.search(text) and not ok_calls("cancel_transfer") and '"status": "cancelled"' not in ev_txt:
+            add("unsupported_action_claim", "critical", "reply says a transfer was cancelled but no cancel_transfer evidence exists")
+        if _REPLACE_DONE.search(text) and not ok_calls("request_replacement_card"):
+            add("unsupported_action_claim", "critical", "reply says a replacement card was ordered but no request_replacement_card evidence exists")
+    if _RISK_LEAK.search(text):  # G-OUT-10
+        add("internal_risk_leak", "critical", "reply mentions internal risk / compliance information")
 
     if ctx.is_template:
         return issues
@@ -177,7 +193,7 @@ def check_output(reply: str, ctx: OutputContext) -> list[ValidationIssue]:
         add("unfulfilled_action_promise", "critical", "reply promises a transfer to a person but no handoff was performed")
 
     # G-OUT-09 unfulfilled action promise: "I'll submit the refund now" is only acceptable if the action was actually performed
-    if _PROMISED_ACTION.search(text) and not any(e.get("tool") in ("create_refund_request", "create_ticket", "assign_to_human") for e in ctx.evidence):
+    if _PROMISED_ACTION.search(text) and not any(e.get("tool") in ("file_dispute", "reverse_fee", "cancel_transfer", "block_card", "request_replacement_card", "create_ticket", "assign_to_human") for e in ctx.evidence):
         add("unfulfilled_action_promise", "critical", "reply promises an action (submit/process/create...) but no write action was performed")
 
     # G-OUT-08 unsupported NEGATIVE claims: "Orbit does not offer X" must be backed by the evidence (absence of evidence is not

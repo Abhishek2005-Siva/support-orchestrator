@@ -3,7 +3,7 @@
 Only replies that (1) passed the validator, (2) are grounded purely in knowledge-base articles (+ the customer's own plan/tier
 profile), (3) contain no PII, ids or the customer's name, and (4) did not escalate are cached. Exact-match on the normalised
 question + plan + tier + account status + KB version; TTL-bounded. A hit skips every LLM call (a few ms instead of ~5-8 s).
-Replies that depend on account data (invoices, logs, refunds) are never cached.
+Replies that depend on account data (transactions, cards, transfers, disputes) are never cached.
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ class AnswerCache:
     def key(message: str, profile: dict | None, kb_version: str) -> str:
         norm = " ".join(_PUNCT.sub(" ", message.lower()).split())
         p = profile or {}
-        raw = "|".join([norm, str(p.get("plan")), str(p.get("tier")), str(p.get("account_status")), kb_version])
+        raw = "|".join([norm, str(p.get("segment")), str(p.get("identity_verified")), kb_version])
         return hashlib.sha256(raw.encode()).hexdigest()
 
     def get(self, k: str):

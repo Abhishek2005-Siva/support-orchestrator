@@ -26,6 +26,8 @@ async def db(tmp_path, monkeypatch):
     yield dst
     await sess.reset_engine(f"sqlite+aiosqlite:///{ROOT / 'data' / 'support.db'}")
     runtime.reset_business_today()
+    for ext in ("", "-wal", "-shm"):  # a 5 MB copy per test adds up on a small /tmp
+        Path(str(dst) + ext).unlink(missing_ok=True)
 
 
 @pytest.fixture

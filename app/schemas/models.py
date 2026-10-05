@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-Intent = Literal["billing", "technical", "escalation", "general", "off_topic"]
+Intent = Literal["payments", "cards", "escalation", "general", "off_topic"]
 Urgency = Literal["low", "medium", "high", "critical"]
 Sentiment = Literal["positive", "neutral", "negative", "angry"]
 Channel = Literal["api", "slack", "web"]
@@ -18,7 +18,7 @@ class DispatchDecision(BaseModel):
     confidence: float = Field(0.8, ge=0, le=1)
     reasoning: str = Field("", max_length=400)
     forced_escalation_reasons: list[str] = []  # filled by deterministic rules, not the LLM
-    refund_requested: bool = False  # the customer is asking us to refund / give money back (a request to ACT, not a question about policy)
+    action_requested: bool = False  # the customer is asking us to ACT (dispute, reverse a fee, cancel a transfer, block a card), not asking a question
     sub_questions: dict[str, str] = {}  # multi-intent only: the customer's question for each specialist, in its own words
 
     @field_validator("sub_questions", mode="before")
@@ -26,7 +26,7 @@ class DispatchDecision(BaseModel):
     def _clean_sub(cls, v):
         if not isinstance(v, dict):
             return {}
-        return {k: str(x)[:250] for k, x in v.items() if k in ("billing", "technical", "general") and isinstance(x, str) and x.strip()}
+        return {k: str(x)[:250] for k, x in v.items() if k in ("payments", "cards", "general") and isinstance(x, str) and x.strip()}
 
     @field_validator("intents")
     @classmethod
@@ -42,7 +42,7 @@ class SpecialistResponse(BaseModel):
     confidence: float = Field(0.7, ge=0, le=1)
     needs_human: bool = False
     needs_human_reason: str | None = None
-    requires_human_approval: bool = False  # e.g. refund above auto-limit
+    requires_human_approval: bool = False  # e.g. dispute above the provisional-credit auto-limit
     evidence: list[dict] = []  # compact tool results for the validator's grounding checks
     iterations: int = 0
     tool_calls: int = 0

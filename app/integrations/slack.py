@@ -3,7 +3,7 @@ logs/slack_outbox.jsonl (dry-run) so the flow is fully testable/inspectable offl
 
 Guardrails:  G-SLACK-01 request signature (HMAC-SHA256, 5-min replay window, constant-time compare)
              G-SLACK-02 retry de-duplication (Slack re-sends events if we answer slowly; we ack immediately and process async)
-             G-SLACK-03 only Slack users linked to an Orbit account may use the bot; only linked STAFF may press review buttons
+             G-SLACK-03 only Slack users linked to an Orbit Bank account may use the bot; only linked STAFF may press review buttons
              G-SLACK-04 customer text shown in the escalation channel is PII-masked
 """
 from __future__ import annotations
@@ -33,7 +33,7 @@ from app.guardrails.pii import mask_pii
 router = APIRouter(prefix="/slack", tags=["slack"])
 _seen_events: dict[str, float] = {}
 _bg: set[asyncio.Task] = set()
-UNLINKED_REPLY = "Your Slack account isn't linked to an Orbit account yet, so I can't help here. Please contact support@orbit.example to link it."
+UNLINKED_REPLY = "Your Slack account isn't linked to an Orbit Bank account yet, so I can't help here. Please contact support@orbit.example to link it."
 
 
 def verify_signature(body: bytes, timestamp: str | None, signature: str | None, secret: str, now: float | None = None) -> bool:

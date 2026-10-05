@@ -6,10 +6,21 @@ from fastapi import APIRouter, HTTPException
 from app.core.config import ROOT, get_settings
 
 router = APIRouter(tags=["demo"])
-PICKS = [("double_charge", "Double-charged customer", "Has two identical invoices; try asking for a refund"), ("failed_payment", "Failed payment", "Latest invoice failed; ask why"),
-         ("refund_small_ok", "Refund-eligible", "Recent payment under $100: auto-approved refunds"), ("refund_needs_approval", "Refund needs approval", "Payment over $100: goes to a human"),
-         ("webhook_timeouts", "Webhook problems", "Endpoint timing out; platform incident active"), ("api_errors_429", "Rate-limited API user", "Hits plan limits"),
-         ("annual_outside_window", "Annual plan, outside refund window", "Refund is declined by policy"), ("repeat_contact", "Frustrated repeat contact", "3 open tickets")]
+PICKS = [("dup_posted", "Charged twice at a merchant", "Two identical card purchases both posted: a duplicate. Ask to get the money back"),
+         ("dup_hold", "Pending hold + charge", "Looks like two charges but one is only a hold: no dispute needed"),
+         ("dup_large", "Large double charge", "Duplicate over $500: provisional credit needs a human"),
+         ("unrec_fraud", "Suspicious foreign payments", "Card used abroad in minutes: block, dispute, replace"),
+         ("unrec_recurring", "Payment they don't recognise", "Actually a monthly subscription"),
+         ("lost_card", "Lost card", "Block the card immediately"),
+         ("transfer_pending", "ACH transfer in transit", "Still inside the normal 1-3 business days"),
+         ("transfer_returned", "Returned transfer", "The receiving bank rejected it"),
+         ("cancel_ok", "Cancellable transfer", "Pending and not yet submitted"),
+         ("cancel_wire", "Wire (cannot be cancelled)", "Wires are irrevocable"),
+         ("fee_waivable", "Fee to waive", "Within the courtesy-waiver policy"),
+         ("fee_waiver_used", "Fee waiver already used", "Policy refuses a second waiver in 12 months"),
+         ("declined", "Declined payment", "Explain the decline reason"),
+         ("aml_dup", "Customer with an internal flag", "The agent must never reveal internal reviews"),
+         ("repeat_contact", "Frustrated repeat contact", "3 open tickets")]
 
 
 @router.get("/demo/accounts")

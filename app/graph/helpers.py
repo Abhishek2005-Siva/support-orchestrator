@@ -41,7 +41,7 @@ async def set_review_draft(query_id: str, draft: str | None, holding: str | None
 
 
 async def file_approval_review(*, query_id: str, customer_id: str, message: str, summary: str, reply: str) -> str:
-    """Refund over the auto-approval limit: a human billing specialist must approve. The customer still gets their
+    """Dispute that needs approval (provisional credit above the auto limit or conditions not met): a human specialist must approve. The customer still gets their
     (truthful) reply, so this does NOT block the conversation. Idempotent per query_id."""
     async with session_scope() as s:
         row = (await s.execute(select(m.HumanReview).where(m.HumanReview.query_id == query_id))).scalars().first()
@@ -49,22 +49,33 @@ async def file_approval_review(*, query_id: str, customer_id: str, message: str,
             return row.id
         hid = await next_id(s, "HRQ", 6)
         row = m.HumanReview(id=hid, query_id=query_id, customer_id=customer_id, priority="medium",
-                            reason="refund above auto-approval limit: needs human approval", summary=summary[:1500],
+                            reason="dispute approval needed: provisional credit requires human approval", summary=summary[:1500],
                             customer_message=message[:2000], draft_reply=reply, status="pending")
         s.add(row)
     await audit("graph", "file_approval_review", query_id=query_id, customer_id=customer_id, args={"review_id": row.id}, outcome="pending_approval")
     return row.id
 
 
-async def settle_pending_refunds(customer_id: str, approved: bool, reviewer: str) -> list[m.RefundRequest]:
-    """Staff decision on a refund-approval case: move this customer's pending refund requests to approved / rejected (audited)."""
+async def settle_pending_disputes(customer_id: str, approved: bool, reviewer: str) -> list[m.Dispute]:
+    """Staff decision on a dispute-approval case: approve = post the provisional credit and move to under_review; reject = close it (audited)."""
+    out = []
     async with session_scope() as s:
-        rows = (await s.execute(select(m.RefundRequest).where(m.RefundRequest.customer_id == customer_id, m.RefundRequest.status == "pending_approval"))).scalars().all()
-        for r in rows:
-            r.status = "approved" if approved else "rejected"
-    for r in rows:
-        await audit(f"staff:{reviewer}", "refund_decision", query_id=None, customer_id=customer_id, args={"refund_id": r.id, "decision": r.status}, outcome="ok")
-    return rows
+        rows = (await s.execute(select(m.Dispute).where(m.Dispute.customer_id == customer_id, m.Dispute.status == "pending_approval"))).scalars().all()
+        for d in rows:
+            if approved:
+                tid = await next_id(s, "TXN", 8)
+                t = await s.get(m.Transaction, d.txn_id)
+                s.add(m.Transaction(id=tid, customer_id=customer_id, account_id=t.account_id, kind="provisional_credit", direction="credit", amount_cents=d.amount_cents, currency="USD",
+                                    description=f"Provisional credit (dispute {d.id})", status="posted", channel="app", country="US", linked_txn_id=t.id, created_at=utcnow(), posted_at=utcnow()))
+                acct = await s.get(m.Account, t.account_id)
+                acct.balance_cents += d.amount_cents
+                d.status, d.provisional_txn_id = "provisional_credit_issued", tid
+            else:
+                d.status = "rejected"
+            out.append(d)
+    for d in out:
+        await audit(f"staff:{reviewer}", "dispute_decision", query_id=None, customer_id=customer_id, args={"dispute_id": d.id, "decision": d.status}, outcome="ok")
+    return out
 
 
 async def resolve_review_row(review_id: str, *, status: str, reviewer: str, note: str | None, final_reply: str | None) -> m.HumanReview | None:

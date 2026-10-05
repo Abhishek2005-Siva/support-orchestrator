@@ -23,8 +23,8 @@ _ANGRY = re.compile(r"furious|outrageous|unacceptable|ridiculous|!!!|livid|usele
 _NEG = re.compile(r"annoyed|frustrat|again|still not|disappoint|angry|upset|terrible", re.I)
 _OFF = re.compile(r"weather|recipe|poem|football|joke|pirate|lasagna|cake|ignore (all )?(previous|your) instructions|system prompt|\bdan\b|other customers?'? (emails|data)", re.I)
 _KW = {
-    "billing": re.compile(r"charge|invoice|bill|refund|payment|paid|price|pricing|plan|subscription|cancel|card|vat|tax|promo|upgrade|downgrade|money back", re.I),
-    "technical": re.compile(r"error|api|webhook|sso|saml|sdk|crash|dashboard|slow|timeout|export|integration|login|password|2fa|bug|outage|401|429|500|down\b", re.I),
+    "payments": re.compile(r"charge|transaction|refund|payment|paid|transfer|wire|\bach\b|fee|dispute|statement|balance|deposit|duplicate|twice|pending|money back", re.I),
+    "cards": re.compile(r"\bcard|\bpin\b|\batm\b|declin|\blost\b|stolen|fraud|unauthori|recogni[sz]e|contactless|limit|block|freeze|replace", re.I),
 }
 
 
@@ -84,7 +84,7 @@ class MockGateway:
         if "combine" in sys.lower() and "partial answers" in sys.lower():
             parts = re.findall(r"---\n(.*?)\n(?=---|\Z)", user, re.S)
             return LLMResult(" ".join(p.strip() for p in parts) if parts else user[:400])
-        agent = "billing" if "BILLING specialist" in sys else "technical" if "TECHNICAL support" in sys else "general" if "GENERAL support" in sys else None
+        agent = "payments" if "PAYMENTS specialist" in sys else "cards" if "CARDS and FRAUD specialist" in sys else "general" if "GENERAL support" in sys else None
         if agent:
             return self._specialist(agent, messages, tools)
         return LLMResult(json.dumps({"ok": True}))
@@ -97,10 +97,13 @@ class MockGateway:
             intents = ["off_topic"]
         else:
             intents = [k for k, rx in _KW.items() if rx.search(msg)] or ["general"]
-        refund_req = bool(re.search(r"please refund|refund (my|the|me)|money back|reimburse", msg, re.I) and not re.search(r"policy|how long|what is", msg, re.I))
+            if re.search(r"unauthori|recogni[sz]e|\blost\b|stolen|fraud|\bblock|declin", msg, re.I) and not re.search(r"transfer|wire|\bfee\b|twice|duplicate|dispute", msg, re.I):
+                intents = ["cards"]
+        act_req = bool(re.search(r"please (?:refund|get|waive|cancel|block|dispute|reverse)|refund (?:my|the|me)|money back|reimburse|waive|dispute|block my|cancel the|don'?t recogni[sz]e|lost my|stolen", msg, re.I)
+                       and not re.search(r"policy|how long|what is|how do|how much", msg, re.I))
         sent = "angry" if _ANGRY.search(msg) else "negative" if _NEG.search(msg) else "neutral"
         return LLMResult(json.dumps({"intents": intents[:2], "urgency": "high" if sent != "neutral" else "medium", "sentiment": sent,
-                                     "confidence": 0.9, "reasoning": "mock keyword classifier", "refund_requested": refund_req}))
+                                     "confidence": 0.9, "reasoning": "mock keyword classifier", "action_requested": act_req}))
 
     # ---- specialists
     def _specialist(self, agent: str, messages: list[dict], tools) -> LLMResult:
@@ -122,37 +125,35 @@ class MockGateway:
         cm = re.search(r"<customer_message>\n(.*?)\n</customer_message>", user, re.S)
         msg = (cm.group(1) if cm else user).lower()
 
-        if agent == "billing" and tools:
-            inv = (results.get("get_invoices") or {}).get("data", {}).get("invoices", [])
-            if re.search(r"refund|money back", msg) and inv and "check_refund_eligibility" not in results:
-                return LLMResult("", [ToolCall("m1", "check_refund_eligibility", json.dumps({"invoice_id": inv[0]["invoice_id"]}))])
-            el = (results.get("check_refund_eligibility") or {}).get("data")
-            if el and el.get("eligible") and "create_refund_request" not in results and re.search(r"refund|money back", msg):
-                return LLMResult("", [ToolCall("m2", "create_refund_request", json.dumps({"invoice_id": el["invoice_id"], "reason": "customer requested refund"}))])
         return LLMResult(json.dumps(self._compose(agent, results, msg)))
 
     def _compose(self, agent: str, results: dict, msg: str) -> dict:
         lines, needs_human, conf = [], False, 0.88
         kb = (results.get("search_knowledge_base") or {}).get("data") or {}
-        if agent == "billing":
-            inv = (results.get("get_invoices") or {}).get("data", {}).get("invoices", [])
-            rf = (results.get("create_refund_request") or {}).get("data")
-            el = (results.get("check_refund_eligibility") or {}).get("data")
-            if rf:
-                if rf["status"] == "pending_approval":
-                    lines.append(f"I've submitted refund request {rf['refund_id']} for {rf['amount']}. A billing specialist needs to approve it, usually within 1 business day.")
+        if agent in ("payments", "cards"):
+            g = lambda k: (results.get(k) or {}).get("data") or {}  # noqa: E731
+            dsp, blk, rep, fee, can, ver = g("file_dispute"), g("block_card"), g("request_replacement_card"), g("reverse_fee"), g("cancel_transfer"), g("verify_transaction_issue")
+            txns = g("get_transactions").get("transactions", [])
+            if blk:
+                lines.append(f"I've blocked your card ending {blk['last4']}.")
+            if dsp:
+                if dsp["status"] == "pending_approval":
+                    lines.append(f"I've filed dispute {dsp['dispute_id']} for {dsp['amount']}. A specialist must approve the provisional credit first, usually within 1 business day.")
                 else:
-                    lines.append(f"Your refund request {rf['refund_id']} for {rf['amount']} has been approved; expect it in 5-10 business days.")
-            elif el and not el.get("eligible"):
-                lines.append(f"Invoice {el['invoice_id']} isn't eligible for a refund: {el['explanation']}")
-            elif inv:
-                i = inv[0]
-                lines.append(f"Your latest invoice {i['invoice_id']} for {i['amount']} has status {i['status']}.")
-        elif agent == "technical":
-            logs = (results.get("get_user_logs") or {}).get("data", {})
-            if logs.get("by_code"):
-                c = logs["by_code"][0]
-                lines.append(f"Your account shows {c['count']} {c['code']} events recently.")
+                    lines.append(f"I've filed dispute {dsp['dispute_id']} for {dsp['amount']} and a provisional credit of {dsp['amount']} has been posted to your account.")
+            if rep:
+                lines.append(f"A replacement card ending {rep['last4']} has been ordered; delivery takes {rep['delivery']}.")
+            if fee:
+                lines.append(f"I've reversed the {fee['amount']} fee.")
+            if can:
+                lines.append(f"Transfer {can['transfer_id']} has been cancelled before it was sent.")
+            if ver and not (blk or dsp or rep or fee or can):
+                lines.append(ver["explanation"])
+                if ver["decision"] == "human":
+                    needs_human, conf = True, 0.4
+            elif txns and not lines:
+                t = txns[0]
+                lines.append(f"Your latest transaction {t['txn_id']} on {t['date']} was {t['amount']} ({t['description']}).")
         if kb.get("results"):
             top = kb["results"][0]
             first = [l for l in top["text"].split("\n")[1:] if l.strip()][:1]

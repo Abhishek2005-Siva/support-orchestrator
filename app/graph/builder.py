@@ -8,7 +8,7 @@
                                          │ Send() fan-out, parallel
                               ┌──────────┼───────────────┐
                               ▼          ▼               ▼
-                          specialist  specialist   escalation_node        (billing/technical/general, 0-2 + escalation)
+                          specialist  specialist   escalation_node        (payments/cards/general, 0-2 + escalation)
                               └──────────┴───────┬───────┘
                                                  ▼
                                                merge ──► validator ─┬─ approve ─► deliver ─► END

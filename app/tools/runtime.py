@@ -1,18 +1,19 @@
 """Tool runtime: registry + the guarded execution pipeline every agent tool call goes through.
 
 Pipeline (each step is a documented guardrail, ids in docs/guardrails.md):
-  G-TOOL-01  per-agent allow-list         billing agent cannot call assign_to_human, etc.  -> blocked + security event
-  G-TOOL-02  JSON + strict Pydantic args  extra="forbid", regex IDs (INV-\\d{8}), length/range limits; errors go back
+  G-TOOL-01  per-agent allow-list         payments agent cannot call block_card or assign_to_human, etc.  -> blocked + security event
+  G-TOOL-02  JSON + strict Pydantic args  extra="forbid", regex IDs (TXN-\\d{8}), length/range limits; errors go back
                                           to the model as a repairable message (it can retry), never as a crash
   G-TOOL-03  SQLi pre-execution scan      strict mode on identifier args, phrase-level mode on free text -> blocked + event
   G-TOOL-04  identity injection / authz   customer_id comes from the authenticated session, never from the model.
                                           If the model supplies a different customer_id -> blocked + authz_violation event
   G-TOOL-05  parameterised SQL only       (inside tool handlers; SQLAlchemy bound params)
-  G-TOOL-06  deterministic policy engine  refund eligibility = code (tools/rules.py), not model opinion
+  G-TOOL-06  deterministic policy engine  dispute / fee / transfer decisions = code reading the policies table (tools/rules.py, tools/verify.py), not model opinion
   G-TOOL-07  audit log                    every write and every blocked call -> audit_log (+ security_events)
   G-TOOL-08  budget + timeout             max tool calls per query, per-call timeout, output size cap
-  G-TOOL-09  idempotent writes            retries / loops cannot create duplicate refunds or tickets
-  G-TOOL-10  intent-gated writes          create_refund_request needs refund intent in the customer's message AND the dispatcher's refund_requested; create_ticket needs a ticket/follow-up request
+  G-TOOL-09  idempotent writes            retries / loops cannot create duplicate disputes, reversals, replacement cards or tickets
+  G-TOOL-10  intent-gated writes          each write tool needs the customer's own words asking for it (WRITE_GATES) and, for money, the dispatcher's action_requested
+  G-TOOL-13  verify before act            dispute / fee reversal / transfer cancellation need a matching verification record, re-derived at action time (tools/verify.py)
 """
 from __future__ import annotations
 
@@ -45,14 +46,23 @@ class ToolContext:
     agent: str
     role: str = "customer"
     message: str = ""  # the customer's (sanitised) message: used to intent-gate write tools
-    refund_requested: bool | None = None  # dispatcher's semantic verdict (None = unknown, e.g. unit tests): policy QUESTIONS must not file refunds
+    action_requested: bool | None = None  # dispatcher's semantic verdict (None = unknown, e.g. unit tests): a QUESTION about policy must not trigger an action
     tool_calls: int = 0
     per_tool: dict = field(default_factory=dict)
     evidence: list[dict] = field(default_factory=list)
     flags: dict = field(default_factory=dict)  # e.g. requires_human_approval, blocked_calls
 
 
-from app.agents.rules import REFUND_REQUEST_RX as _REFUND_INTENT  # noqa: E402  (single shared definition)
+from app.agents.rules import BLOCK_RX, CANCEL_RX, DISPUTE_RX, FEE_RX, REPLACE_RX, UNAUTH_RX  # noqa: E402  (single shared definitions)
+
+# G-TOOL-10: tool -> (the customer's message must match, does the dispatcher's action_requested=False veto it, what to tell the model)
+WRITE_GATES = {
+    "file_dispute": (lambda t: DISPUTE_RX.search(t) or UNAUTH_RX.search(t), True, "the customer did not ask us to dispute or reverse anything; explain what you found and offer it instead of filing"),
+    "reverse_fee": (lambda t: FEE_RX.search(t), True, "the customer did not ask for the fee to be reversed; explain the fee and the waiver policy and offer it instead"),
+    "cancel_transfer": (lambda t: CANCEL_RX.search(t), False, "the customer did not ask to cancel the transfer; explain its status instead"),
+    "block_card": (lambda t: BLOCK_RX.search(t), False, "the customer did not report the card lost, stolen or compromised and did not ask to block it"),
+    "request_replacement_card": (lambda t: REPLACE_RX.search(t), False, "the customer did not ask for a replacement card; offer one instead"),
+}
 
 
 _TICKET_INTENT = __import__("re").compile(r"ticket|escalat|engineer|follow[- ]?up|open a case|raise a case|log (a|an) (issue|case|bug)|report (a|this|the) (bug|issue|problem)|contact me|get back to me|call me|someone (to )?(look|check)", __import__("re").I)
@@ -185,10 +195,10 @@ async def _execute(agent: str, name: str, raw_args, ctx: ToolContext) -> ToolRes
         return ToolResult(False, error="arguments must be a JSON object")
 
     # G-TOOL-04 identity: the model must never choose whose data to read
-    for key in ("customer_id", "customerId", "cust_id", "user_id", "account_id", "email"):
+    for key in ("customer_id", "customerId", "cust_id", "user_id", "email"):
         if key in args:
             supplied = str(args.pop(key))
-            if key in ("customer_id", "customerId", "cust_id", "account_id") and supplied.upper() != ctx.customer_id.upper():
+            if key in ("customer_id", "customerId", "cust_id") and supplied.upper() != ctx.customer_id.upper():
                 ctx.flags["blocked_calls"] = ctx.flags.get("blocked_calls", 0) + 1
                 await log_security_event("authz_violation", f"agent={agent} tool={name} tried customer_id={supplied}",
                                          query_id=ctx.query_id, customer_id=ctx.customer_id)
@@ -196,11 +206,12 @@ async def _execute(agent: str, name: str, raw_args, ctx: ToolContext) -> ToolRes
                             args={"attempted_customer": supplied}, outcome="blocked")
                 return ToolResult(False, error="you may only access the authenticated customer's data", blocked=True)
 
-    # G-TOOL-10 intent-gated writes: a refund can only be created if the CUSTOMER asked for one (not on the model's initiative)
-    if name == "create_refund_request" and ctx.message and (not _REFUND_INTENT.search(ctx.message) or ctx.refund_requested is False):
+    # G-TOOL-10 intent-gated writes: an action can only run if the CUSTOMER asked for it (not on the model's initiative)
+    gate = WRITE_GATES.get(name)
+    if gate and ctx.message and (not gate[0](ctx.message) or (gate[1] and ctx.action_requested is False)):
         await log_security_event("unrequested_write_blocked", f"agent={agent} tool={name}", query_id=ctx.query_id, customer_id=ctx.customer_id, blocked=True)
         await audit(agent, f"tool:{name}", query_id=ctx.query_id, customer_id=ctx.customer_id, args=None, outcome="blocked")
-        return ToolResult(False, error="the customer did not ask for a refund; explain eligibility and offer it instead of creating one", blocked=True)
+        return ToolResult(False, error=gate[2], blocked=True)
 
     if name == "create_ticket" and ctx.message and not _TICKET_INTENT.search(ctx.message):
         await log_security_event("unrequested_write_blocked", f"agent={agent} tool={name}", query_id=ctx.query_id, customer_id=ctx.customer_id, blocked=True)

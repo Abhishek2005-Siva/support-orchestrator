@@ -10,7 +10,7 @@ async def next_id(s: AsyncSession, prefix: str, width: int) -> str:
                            .returning(m.IdSequence.value))).first()
     if row is None:  # first use on a database that was not seeded with sequences: start from the existing max
         from sqlalchemy import func, select
-        tbl = {"REF": m.RefundRequest, "TCK": m.Ticket, "HRQ": m.HumanReview}[prefix]
+        tbl = {"DSP": m.Dispute, "TCK": m.Ticket, "HRQ": m.HumanReview, "VER": m.Verification, "TXN": m.Transaction, "CARD": m.Card}[prefix]
         cur = (await s.execute(select(func.count()).select_from(tbl))).scalar_one()
         s.add(m.IdSequence(name=prefix, value=cur + 1))
         await s.flush()

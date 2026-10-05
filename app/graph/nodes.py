@@ -29,8 +29,8 @@ from app.llm.gateway import get_gateway
 from app.observability.tracing import tracer
 from app.schemas.models import SpecialistResponse
 
-OFF_TOPIC_REPLY = ("I'm here to help with Orbit: billing, your account and technical questions. I can't help with that request, "
-                   "but if you have a question about Orbit I'm happy to help.")
+OFF_TOPIC_REPLY = ("I'm here to help with Orbit Bank: your accounts, cards, payments and transfers. I can't help with that request, "
+                   "but if you have a banking question I'm happy to help.")
 FOREIGN_REPLY = "I can only help with your own account, so I can't look up or share information about other accounts."
 MERGE_SYSTEM = ("You combine partial answers from several support specialists into ONE coherent reply to the customer. "
                 "Keep every id, amount, date and number EXACTLY as written; add NO new facts, promises or guarantees; remove duplicates; "
@@ -150,7 +150,7 @@ def route_after_triage(state: SupportState):
     base["foreign"] = (state.get("input") or {}).get("foreign") or []
     base["feedback"] = []
     for i in intents:
-        if i in ("billing", "technical", "general"):
+        if i in ("payments", "cards", "general"):
             sends.append(Send("specialist", {**base, "agent": i, "sub_question": (state["dispatch"].get("sub_questions") or {}).get(i)}))
         elif i == "escalation":
             sends.append(Send("escalation_node", {**base, "reasons": state["dispatch"].get("forced_escalation_reasons", [])}))
@@ -204,7 +204,7 @@ async def merge(state: SupportState) -> dict:
             if len(useful) == 1:
                 body = useful[0].reply
             elif len(useful) > 1 and get_settings().merge_mode != "llm":
-                order = {"billing": 0, "technical": 1, "general": 2}
+                order = {"payments": 0, "cards": 1, "general": 2}
                 body = "\n\n".join(o.reply for o in sorted(useful, key=lambda o: order.get(o.agent, 9)))  # template merge: no extra LLM round trip
             elif len(useful) > 1:
                 try:
@@ -273,7 +273,7 @@ async def deliver(state: SupportState) -> dict:
     if m.get("requires_human_approval"):
         review_id = await H.file_approval_review(
             query_id=state["query_id"], customer_id=state["customer_id"], message=state["clean_message"],
-            summary="Refund request above the auto-approval limit awaiting human approval. Customer was told approval is pending.", reply=m["reply"])
+            summary="Dispute awaiting human approval: provisional credit is above the auto-approval limit, or the customer does not meet its conditions. The customer was told approval is pending.", reply=m["reply"])
         flags.update(approval_review_id=review_id, requires_human_approval=True)
     if state.get("escalation_output"):  # escalated: the customer gets the holding reply now, a human follows up out-of-band
         row = await H.get_review(state["query_id"])

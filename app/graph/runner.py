@@ -122,14 +122,15 @@ async def resume_review(*, review_id: str, action: str, reviewer: str, reply: st
     async with tracer.trace("review_resume", query_id=row.query_id, customer_id=row.customer_id, channel="staff", input=decision):
         if snap and snap.next:
             out = await graph.ainvoke(Command(resume=decision), config)
-        elif row.reason and row.reason.startswith("refund above auto-approval limit") and action in ("approve", "reject"):
-            # refund-approval case (the customer already got a truthful "pending approval" reply): settle the refund and tell them the outcome
-            refunds = await H.settle_pending_refunds(row.customer_id, action == "approve", reviewer)
-            amt = f"${refunds[0].amount_cents / 100:,.2f}" if refunds else "your refund"
-            final = (f"Good news: our billing team approved your refund {refunds[0].id if refunds else ''} ({amt}). It will reach your original payment method in 5-10 business days."
-                     if action == "approve" else f"Our billing team reviewed your refund request and could not approve it{': ' + note if note else '.'} You can reply here if you'd like us to look again.")
+        elif row.reason and row.reason.startswith("dispute approval needed") and action in ("approve", "reject"):
+            # dispute-approval case (the customer already got a truthful "pending approval" reply): settle the dispute and tell them the outcome
+            disputes = await H.settle_pending_disputes(row.customer_id, action == "approve", reviewer)
+            amt = f"${disputes[0].amount_cents / 100:,.2f}" if disputes else "the disputed amount"
+            did = disputes[0].id if disputes else ""
+            final = (f"Good news: our disputes team approved dispute {did}. A provisional credit of {amt} has been posted to your account while we complete the investigation."
+                     if action == "approve" else f"Our disputes team reviewed dispute {did} and could not approve a provisional credit{': ' + note if note else '.'} You can reply here if you'd like us to look again.")
             await H.resolve_review_row(review_id, status="approved" if action == "approve" else "rejected", reviewer=reviewer, note=note, final_reply=final)
-            out = {"final_reply": final, "status": "delivered", "review_id": review_id, "flags": {"human_resolved": action, "refund_settled": [r.id for r in refunds]}}
+            out = {"final_reply": final, "status": "delivered", "review_id": review_id, "flags": {"human_resolved": action, "dispute_settled": [d.id for d in disputes]}}
         else:  # no checkpoint (e.g. a restarted in-memory graph): apply the decision directly
             draft = row.draft_reply
             final = draft if action == "approve" and draft else reply if action == "edit" and reply else None
