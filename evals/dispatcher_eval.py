@@ -5,7 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.core.config import get_settings
 from evals.handwritten_cases import HANDWRITTEN
-from evals.label_maps import bitext_cases, ticket_cases
+from evals.label_maps import banking77_cases
 
 def correct(pred, case): return sorted(pred) == case["expected"] or sorted(pred) in case["alt"]
 
@@ -30,7 +30,7 @@ def summarize(res, title):
         L.append(f"| {g} | {len(rs)} | {ex:.1%} | {prim:.1%} | {ms[len(ms)//2]:.0f} | {ms[int(.95*len(ms))-1]:.0f} |")
     # escalation / off_topic precision-recall
     L += ["", "| class | precision | recall | support |", "|---|---|---|---|"]
-    for cls in ("escalation", "off_topic", "billing", "technical", "general"):
+    for cls in ("escalation", "off_topic", "payments", "cards", "general"):
         tp_p = sum(cls in r["pred"] and (cls in r["expected"] or any(cls in a for a in r["alt"])) for r in res)
         tp_r = sum(cls in r["pred"] and cls in r["expected"] for r in res)
         pp = sum(cls in r["pred"] for r in res); ap = sum(cls in r["expected"] for r in res)
@@ -46,11 +46,11 @@ async def main():
     s = get_settings()
     if a.model: s.dispatcher_model = a.model
     s.llm_cache = False
-    cases = HANDWRITTEN + bitext_cases() + ticket_cases()
+    cases = HANDWRITTEN + banking77_cases(n_per=4)
     print("cases", len(cases), "model", s.dispatcher_model)
     res = await run(cases)
     L, g = summarize(res, f"Dispatcher routing — model `{s.dispatcher_model}` ({len(cases)} cases)")
-    Path(s.report_dir, a.out).write_text("# 03 — Dispatcher evaluation\n_Live LLM, no cache. Labels: handwritten (hand), Bitext & ticket datasets (Kaggle) mapped by evals/label_maps.py._\n\n" + "\n".join(L))
+    Path(s.report_dir, a.out).write_text("# 03 — Dispatcher evaluation\n_Live LLM, no cache. Labels: handwritten (hand) and PolyAI Banking77 (GitHub, test split; 4 messages per mapped intent) mapped by evals/label_maps.py. Banking77 is from a neobank, so label noise is expected._\n\n" + "\n".join(L))
     print("\n".join(L[:14]))
 if __name__ == "__main__":
     asyncio.run(main())

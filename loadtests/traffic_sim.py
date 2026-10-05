@@ -11,8 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 CREDS = json.loads((ROOT / "data/demo_credentials.json").read_text())
 CASES = [json.loads(l) for l in (ROOT / "evals/golden.jsonl").read_text().splitlines()]
-WEIGHTS = {"kb_faq": 22, "billing_failed_payment": 8, "billing_refund_ok": 4, "billing_double_explain": 4, "tech_webhook": 6, "tech_429": 6, "multi_intent": 8,
-           "escalation": 5, "unanswerable": 4, "adv_injection": 4, "adv_sqli": 2, "off_topic": 3, "benign_lookalike": 4, "billing_refund_needs_approval": 2}
+WEIGHTS = {"kb_faq": 22, "pay_dup_dispute": 6, "pay_dup_hold": 4, "pay_dup_explain": 4, "pay_transfer_wait": 6, "pay_cancel_ok": 3, "pay_fee_waive": 3, "card_fraud": 4, "card_lost": 4,
+           "card_declined": 6, "card_known_merchant": 3, "escalation": 5, "unanswerable": 4, "adv_injection": 4, "adv_sqli": 2, "off_topic": 3, "benign_lookalike": 4, "pay_dup_large": 2}
 POOL = [c["message"] for c in CASES for _ in range(WEIGHTS.get(c["category"], 0))]
 CUSTOMERS = [k for k in CREDS if k.startswith("CUST-")]
 
@@ -89,7 +89,7 @@ async def main():
     ap.add_argument("--mock-latency-ms", type=int, default=150); ap.add_argument("--port", type=int, default=8765); a = ap.parse_args()
     base = f"http://127.0.0.1:{a.port}"
     L = ["# 06 — Load test (orchestration layer, mock LLM)", f"_Real uvicorn server (1 worker) + SQLite WAL + LangGraph + guardrails + tools; LLM calls replaced by a deterministic mock (`LLM_MODE=mock`). "
-         f"Client: asyncio/httpx on the same machine. Query mix: golden-set messages (FAQ, billing, technical, multi-intent, escalation, adversarial, benign). Answer cache OFF._", "",
+         f"Client: asyncio/httpx on the same machine. Query mix: golden-set messages (FAQ, payments, cards, escalation, adversarial, benign). Answer cache OFF._", "",
          "| scenario | users | requests | 200 OK | errors | req/s | p50 ms | p95 ms | p99 ms | max ms |", "|---|---|---|---|---|---|---|---|---|---|"]
     extra = []
     # 1) pure orchestration overhead (mock latency 0)

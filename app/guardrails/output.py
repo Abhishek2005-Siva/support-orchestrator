@@ -53,10 +53,11 @@ _NEGATIVE = re.compile(
 _FIRST_PERSON = re.compile(r"\bI(?:'m| am| do| don't| cannot| can't| couldn't| could not| have no| haven't| didn't)\b|\bI (?:don't|do not|cannot|can't|couldn't|could not) ", re.I)
 _HEDGED = re.compile(r"knowledge base|documentation|docs\b|help center|available (?:information|docs)|my (?:information|records)", re.I)
 _STOPW = set("a an the any for with and or of to in on at is are be as it its this that your you our we orbit native natively currently yet option feature support supports supported offer offers offered".split())
-_CREDIT_DONE = re.compile(r"(?:\b(?:provisional )?credit(?: of \$?[\d,.]+)? (?:has been|was|is|has now been|is now) (?:posted|issued|applied|added|approved|credited|in your account)\b|"
-                          r"\bI(?:'ve| have) (?:issued|posted|credited|refunded|reversed|waived|approved)\b|\b(?:fee|charge) (?:has been|was) (?:reversed|waived|refunded|credited|removed)\b|"
-                          r"\b(?:refund|credit|reversal)\b[^.!?]{0,40}\b(?:has|have) been (?:approved|issued|processed|refunded|credited|posted|completed|sent)\b|"
-                          r"\b(?:refund|credit) (?:is|was) (?:approved|issued|processed|on its way|complete)\b|\bhas been (?:credited|refunded) to your account\b)", re.I)
+_CREDIT_DONE = re.compile(r"(?:\bI(?:'ve| have) (?:issued|posted|credited|refunded|reversed|waived|approved)\b|"
+                          r"\b(?:provisional )?credit(?: of \$?[\d,.]+)? (?:has been|was|is now|has now been) (?:posted|issued|applied|added|approved|credited)\b[^.!?]{0,40}\byour\b|"
+                          r"\byour (?:\w+ ){0,3}(?:refund|credit|reversal|fee)\b[^.!?]{0,30}\b(?:has|have) been (?:approved|issued|processed|refunded|credited|posted|reversed|waived|completed|sent)\b|"
+                          r"\b(?:fee|charge) (?:has been|was) (?:reversed|waived|refunded|credited|removed)\b|\bhas been (?:credited|refunded) to your account\b|"
+                          r"\b(?:refund|credit) (?:is|was) on its way\b)", re.I)
 _DISPUTE_FILED = re.compile(r"\bI(?:'ve| have) (?:filed|opened|submitted|raised|started|created) (?:a |your |the )?dispute\b|\bdispute (?:DSP-\d+ )?(?:has been|was) (?:filed|opened|submitted|raised|created)\b", re.I)
 _BLOCK_DONE = re.compile(r"\bI(?:'ve| have) (?:now )?(?:blocked|frozen|locked)\b|\b(?:your|the) (?:\w+ )?card (?:ending \d{4} )?(?:is|has been|was) (?:now )?(?:blocked|frozen|locked)\b", re.I)
 _CANCEL_DONE = re.compile(r"\bI(?:'ve| have) cancell?ed\b|\b(?:the|your) (?:\w+ )?transfer (?:\w+ )?(?:has been|was|is now) cancell?ed\b", re.I)
@@ -169,13 +170,15 @@ def check_output(reply: str, ctx: OutputContext) -> list[ValidationIssue]:
     if not ctx.is_template:
         disputes, fees = ok_calls("file_dispute"), ok_calls("reverse_fee")
         paid = [d for d in disputes if d.get("status") == "provisional_credit_issued"] + fees
+        if '"status": "provisional_credit_issued"' in ev_txt or '"kind": "provisional_credit"' in ev_txt or '"kind": "refund"' in ev_txt:
+            paid.append({"existing": True})        # a credit already in the ledger / on an existing dispute is a fact the reply may state
         pending = [d for d in disputes if d.get("status") == "pending_approval"]
         if _CREDIT_DONE.search(text) and not paid:
             add("premature_credit_claim" if pending else "unsupported_credit_claim", "critical",
                 "reply says a credit/refund/reversal was issued but evidence shows " + ("only a dispute pending approval" if pending else "none"))
         if _DISPUTE_FILED.search(text) and not disputes:
             add("unsupported_action_claim", "critical", "reply says a dispute was filed but no file_dispute evidence exists")
-        if _BLOCK_DONE.search(text) and not ok_calls("block_card") and '"status": "blocked"' not in ev_txt and '"status": "lost"' not in ev_txt:
+        if _BLOCK_DONE.search(text) and not ok_calls("block_card") and "blocked" not in ev_txt and '"status": "lost"' not in ev_txt:
             add("unsupported_action_claim", "critical", "reply says a card was blocked but no block_card evidence exists")
         if _CANCEL_DONE.search(text) and not ok_calls("cancel_transfer") and '"status": "cancelled"' not in ev_txt:
             add("unsupported_action_claim", "critical", "reply says a transfer was cancelled but no cancel_transfer evidence exists")

@@ -54,7 +54,7 @@ class JudgeOutput(BaseModel):
         return [x if isinstance(x, str) else json.dumps(x, default=str) for x in v]
 
 
-def _compact_evidence(evidence: list[dict], limit: int = 24000) -> str:
+def _compact_evidence(evidence: list[dict], limit: int = 32000) -> str:
     """Every distinct evidence item is shown (per-item budgets, duplicates removed) - a global cut-off hid late items such as the
     account logs of the second specialist and made the judge call supported claims 'unsupported'."""
     items, seen = [], set()
@@ -68,7 +68,8 @@ def _compact_evidence(evidence: list[dict], limit: int = 24000) -> str:
         if key in seen:
             continue
         seen.add(key)
-        items.append({"tool": e["tool"], "result": txt if len(txt) <= 3000 else txt[:3000] + "…[truncated]"})
+        cap = 7000 if e["tool"] in ("get_transactions", "get_transfer_status", "get_cards") else 3500   # a 16-row ledger is ~4 KB: cutting it hid the very rows the reply quotes
+        items.append({"tool": e["tool"], "result": txt if len(txt) <= cap else txt[:cap] + "…[truncated]"})
     out = json.dumps(items, default=str)
     return out if len(out) <= limit else out[:limit] + "…[truncated]"
 

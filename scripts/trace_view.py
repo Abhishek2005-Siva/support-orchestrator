@@ -1,5 +1,5 @@
 """Print span trees from logs/traces/*.jsonl so you can see exactly where time went.
-usage: python scripts/trace_view.py [--last N] [--trace ID] [--root-name agent.technical] [--min-ms 0]
+usage: python scripts/trace_view.py [--last N] [--trace ID] [--root-name agent.payments] [--min-ms 0]
 Spans without a trace id (unit/smoke runs) are grouped by their root span."""
 import argparse, glob, json, sys
 from collections import defaultdict

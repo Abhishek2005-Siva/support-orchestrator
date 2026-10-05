@@ -55,21 +55,22 @@ Every guardrail has an ID (`G-…`); the same ID appears in the code comments, t
 
 | ID | Method | Detail | Test |
 |---|---|---|---|
-| G-TOOL-01 | Per-agent allow-list | billing agent cannot call `assign_to_human`, etc. → blocked + security event + audit | `test_allow_list_blocks_and_logs` |
-| G-TOOL-02 | Strict schema | Pydantic `extra="forbid"`, regex IDs (`INV-\d{8}`), ranges, lengths. Errors are returned to the model as *repairable* messages | `test_invalid_args_return_repairable_error` |
+| G-TOOL-01 | Per-agent allow-list | payments agent cannot call `block_card` or `assign_to_human`, etc. → blocked + security event + audit | `test_allow_list_blocks_and_logs` |
+| G-TOOL-02 | Strict schema | Pydantic `extra="forbid"`, regex IDs (`TXN-\d{8}`, `CARD-\d{7}`), ranges, lengths. Errors are returned to the model as *repairable* messages | `test_invalid_args_return_repairable_error` |
 | G-TOOL-03 | **SQLi pre-execution scan** | strict mode on identifier args (any quote/`;`/`--`/space → reject), phrase mode on free text. Logged as `sqli_attempt` | `test_sqli_in_identifier_blocked_before_db` |
 | G-TOOL-04 | **Identity injection** | `customer_id` comes from the JWT, never the model. If the model supplies another one → blocked + `authz_violation`. Tool schemas never even offer an identity parameter | `test_model_cannot_choose_customer` |
-| G-TOOL-05 | Parameterised SQL only | SQLAlchemy bound parameters everywhere; every query also has `WHERE customer_id = :session_customer` | `test_cannot_read_other_customers_invoice` |
-| G-TOOL-06 | Policy as code | refund eligibility = deterministic rules engine (`tools/rules.py`), re-derived inside `create_refund_request` — the model's opinion is never trusted | `test_refund_*` (ground-truth manifest) |
+| G-TOOL-05 | Parameterised SQL only | SQLAlchemy bound parameters everywhere; every query also has `WHERE customer_id = :session_customer` | `test_cannot_read_other_customers_transaction` |
+| G-TOOL-06 | Policy as data, decisions as code | every number (dispute window, provisional-credit limit, fee waiver, transfer timing…) is a row in the `policies` table; the checks in `tools/rules.py` read it, so changing a row changes behaviour; the model's opinion is never trusted | `test_verification_matches_ground_truth`, `test_policy_table_drives_the_decision` |
 | G-TOOL-07 | Audit log | every write and every blocked call → `audit_log` (+ `security_events`, `logs/security_events.jsonl`) | `test_audit_log_written…` |
 | G-TOOL-08 | Budget + timeout | ≤12 calls/query, ≤4 per tool, 10 s per call, 6 000-char result cap | `test_tool_call_budget` |
-| G-TOOL-09 | Idempotent writes | repeating `create_refund_request` / `create_ticket` / `assign_to_human` never duplicates | `test_refund_small_auto_approved_idempotent…` |
-| G-TOOL-10 | **Intent-gated writes** | `create_refund_request` requires refund intent in the *customer's* message **and** the dispatcher's semantic `refund_requested` verdict (so a policy *question* containing the word "refund" cannot file one); `create_ticket` requires a ticket/follow-up request. Stops "model decided on its own" actions |
-| G-TOOL-11 | **Refund filing is a policy path, not a model whim** | when the dispatcher flags an explicit refund *request*, the billing prefetch runs the eligibility engine and, if eligible, files the request through the same guarded tool (auto-approve ≤ $100, else pending human approval); the model only explains the outcome | `test_refund_write_is_intent_gated…`, `test_ticket_write_is_intent_gated` |
+| G-TOOL-09 | Idempotent writes | repeating `file_dispute` / `reverse_fee` / `cancel_transfer` / `block_card` / `request_replacement_card` / `create_ticket` / `assign_to_human` never duplicates; a verification re-run in the same query returns the same result | `test_file_dispute_requires_verification…`, `test_reverse_fee_cancel_transfer_block_and_replace` |
+| G-TOOL-10 | **Intent-gated writes** | each write tool needs the *customer's own words* asking for it (`WRITE_GATES` in `tools/runtime.py`: dispute / waive / cancel / block / replace / ticket) and, for money, the dispatcher's semantic `action_requested` verdict (so a *question* about disputes cannot file one). Stops "model decided on its own" actions | `test_writes_are_intent_gated_on_the_customers_own_words`, `test_dispute_gate_also_needs_dispatchers_action_requested` |
+| G-TOOL-11 | **The workflow is a staged policy path, not a model whim** | the payments / cards prefetch runs ledger → `verify_transaction_issue` → (only if the verification allows it and the customer asked) the action, through the same guarded tools; the model then explains the outcome | `test_double_charge_with_a_request_files_dispute…`, `test_pending_hold_is_explained_not_disputed` |
 | G-TOOL-12 | Only offered tools run | tools hidden this turn (e.g. KB re-search after a strong hit) are rejected even if the model "continues the pattern" | live agent tests |
-| — | No enumeration oracle | a foreign invoice id and a non-existent id return the *same* error | `test_cannot_read_other_customers_invoice` |
+| G-TOOL-13 | **Verify before act** | `file_dispute`, `reverse_fee` and `cancel_transfer` need a `verification_id` from `verify_transaction_issue`: the verifier asks the knowledge graph which checks and policies apply, runs them on the customer's ledger, stores a record, and the action tool **re-derives the decision itself** — a stale, foreign or invented verification is refused. Internal facts (risk flag, fraud score) shape the decision but are never returned | `test_file_dispute_requires_verification…`, `test_action_tools_need_the_right_verification_and_decision`, `test_knowledge_graph_drives_which_checks_run` |
+| — | No enumeration oracle | a foreign transaction id and a non-existent id return the *same* error | `test_cannot_read_other_customers_transaction` |
 
-Data layer: **G-DATA-01** atomic id allocation (`id_sequences` + `UPDATE … RETURNING`) — found by the load/eval harness (see `docs/debugging-case-studies.md` #3); regression test `test_concurrent_writes_get_unique_ids_no_failures`.
+Data layer: **G-DATA-01** atomic id allocation (`id_sequences` + `UPDATE … RETURNING`) — found by the load/eval harness (a `count(*)+1` id race under concurrency); regression test `test_concurrent_writes_get_unique_ids_no_failures`.
 
 ## 4. LLM-layer controls (`app/llm/`)
 
@@ -79,7 +80,7 @@ Data layer: **G-DATA-01** atomic id allocation (`id_sequences` + `UPDATE … RET
 | R-01/02 | Global semaphore + token bucket | stay under the free-tier limit (measured: 429s above ≈100 rpm / concurrency 4) |
 | R-03 | Retry with exponential backoff + jitter; honours `Retry-After` | 429 / 5xx / timeouts |
 | R-04 | Fallback model chain per role | primary down / 404 / 410 → next model |
-| R-08 | **Dead-model circuit breaker** | 404/410/403 ⇒ the model is skipped for 15 min (no wasted round trip per call); `llm.model_unavailable` trace event. Added after the primary model was retired mid-project (case study #15) |
+| R-08 | **Dead-model circuit breaker** | 404/410/403 ⇒ the model is skipped for 15 min (no wasted round trip per call); `llm.model_unavailable` trace event. Added after the primary model was retired mid-project (HTTP 410) |
 | R-05 | Exact-match LRU cache (temperature 0) | repeated calls cost nothing |
 | R-06 | Per-call timeout (20 s) | nothing can hang |
 | R-07 | **Hedged requests** | the free endpoint stalls ~3 % of calls for 20–30 s; once a request has actually been *sent* and 2.5–5 s (per role) pass without an answer, an identical request is raced. The timer excludes time spent queueing behind the rate limiter (including it hedged 31 % of calls and doubled the load — case study #11) |
@@ -93,14 +94,15 @@ Layer 1 is **deterministic** (no LLM, ~1 ms) and re-derives everything from the 
 | ID | Check | Severity |
 |---|---|---|
 | G-OUT-01 | PII / secrets / full card numbers / SSN / IBAN in the reply (own email allowed) | critical |
-| G-OUT-02 | Forbidden promises ("I guarantee", "definitely get a refund"); liability admissions | critical / warning |
-| G-OUT-03 | **Action claims vs evidence**: "refund approved/issued" without an *approved* refund; "request filed" without any request; "approved" while evidence says *pending approval* | critical |
-| G-OUT-04 | **Numeric grounding**: every `$` amount (critical), document id `INV-/REF-/TCK-/HRQ-/PAY-` (critical), date, and number-with-unit ("14 days", "600 requests/min") must exist in the evidence or the customer's own message | critical / warning |
+| G-OUT-02 | Forbidden promises ("I guarantee", "definitely get your money back"); liability admissions | critical / warning |
+| G-OUT-03 | **Action claims vs evidence**: "credit issued / posted", "dispute filed", "card blocked", "transfer cancelled", "fee reversed", "replacement ordered" without the matching *successful* action; "credit posted" while the dispute is only *pending approval* | critical |
+| G-OUT-04 | **Numeric grounding**: every `$` amount (critical), document id `TXN-/DSP-/TRF-/CARD-/VER-/TCK-/HRQ-/POL-` (critical), date, and number-with-unit ("10 business days", "60 days") must exist in the evidence or the customer's own message | critical / warning |
 | G-OUT-05 | Account facts need account evidence; `sources` are derived from real tool calls, not trusted from the model | critical |
 | G-OUT-06 | Hygiene: tool names, prompt/rule text, JSON/code fences, role-play compliance, profanity, empty/over-long | critical |
 | G-OUT-07 | Other customers' ids must never appear | critical |
 | G-OUT-08 | **Unsupported negative claims**: "Orbit does not offer / include X" needs X's words in the evidence (absence of evidence ≠ evidence of absence); first-person limits ("I couldn't find…") and hedged phrasing ("not mentioned in the knowledge base") are allowed | critical |
-| G-OUT-09 | **Unfulfilled action promises**: "I'll submit the refund now" without a write action in the evidence | critical |
+| G-OUT-09 | **Unfulfilled action promises**: "I'll file the dispute now" without a write action in the evidence | critical |
+| G-OUT-10 | **No internal risk information**: AML / compliance reviews, risk flags, fraud scores and SAR language never appear in a reply (also filtered out of every tool result the model sees) | critical |
 
 Layer 2 is an **LLM faithfulness judge** (temperature 0, JSON schema, claim-by-claim vs evidence; calibrated against paraphrases; sees *every* evidence item). Decision logic **G-VAL-01**:
 
@@ -113,7 +115,7 @@ deterministic warnings (+ judge < 0.9) ...... revise ─► human_review
 confidence (0.75·judge + 0.25·specialist − 0.05·warnings) < 0.7 ... human_review
 otherwise ................................... approve
 ```
-The validator and the judge **never fall back to a weaker model** (a weak judge rejected 68 % of good drafts vs 8 % on the primary — case study #16): more retries on the primary, then fail closed to a human. Every decision (reply, evidence sources, issues, judge output) is appended to `logs/validator_audit.jsonl` for manual review. Tests: `tests/test_output_guardrails.py` (14, built from real tool evidence), `tests/live/test_validator.py` (8, live LLM).
+The validator and the judge **never fall back to a weaker model** (a weak judge rejected 68 % of good drafts vs 8 % on the primary — measured during development): more retries on the primary, then fail closed to a human. Every decision (reply, evidence sources, issues, judge output) is appended to `logs/validator_audit.jsonl` for manual review. Tests: `tests/test_output_guardrails.py` (14, built from real tool evidence), `tests/live/test_validator.py` (8, live LLM).
 
 ## 6. Human-in-the-loop (`app/graph/`, `app/api/review.py`, `app/integrations/slack.py`)
 
@@ -159,12 +161,12 @@ The validator and the judge **never fall back to a weaker model** (a weak judge 
 | A-KB-01 | Dense-led hybrid retrieval (`nvidia/nemotron-3-embed-1b` + 0.05·BM25). Chosen by experiment: BM25 0.42 → dense 0.87 → hybrid 0.89 recall@1 on Kaggle-derived queries; naive RRF was worse (0.68) | `01_kb_retrieval.md` |
 | A-KB-02/03 | Category filter with auto-widening; relevance threshold calibrated on in-scope vs out-of-scope queries; weak matches carry an explicit "use only if it directly answers" note | `01_kb_retrieval.md` |
 | A-KB-04 | Stable source ids per chunk, used by the validator | |
-| — | **Prefetch**: independent lookups (KB, invoices, logs, status, refund eligibility) run in parallel before the first LLM call, through the *same guarded tool path* | latency + accuracy |
-| — | Deterministic business logic (refund rules, escalation priority) lives in code and is unit-tested against a seeded ground-truth manifest | `tests/test_tools.py` |
-| — | Per-specialist scope for multi-intent messages (stops cross-topic hallucination, found by the judge) | case study #5 |
+| — | **Prefetch**: independent lookups (KB, ledger, cards, transfers) run in parallel, then the verification and the action as dependent stages, before the first LLM call, through the *same guarded tool path* | latency + accuracy |
+| — | Deterministic business logic (verification checks, escalation priority) lives in code and the policy table and is unit-tested against a seeded ground-truth manifest | `tests/test_tools.py` |
+| — | Per-specialist scope for multi-intent messages (stops cross-topic hallucination, found by the judge) | `test_multi_intent_*` |
 | — | Dispatcher: few-shot prompt + schema + deterministic overlay; per-intent **sub-questions** for multi-intent messages (each specialist retrieves for *its* part); chosen over 2 smaller models by measurement | `03_dispatcher*.md` |
 | — | Reply text normalisation (NFKC, non-breaking spaces/hyphens, typographic quotes, leaked "Confidence: 0.9, needs_human: false" trailers stripped) so regex checks and customers see plain text | `test_leaked_metadata_trailer…` |
-| — | Full KB chunks (no truncation) are passed to the validator and the judge sees every distinct evidence item | case study #10 |
+| — | Full KB chunks (no truncation) are passed to the validator and the judge sees every distinct evidence item | `test_validator_*` |
 
 ## 11. Latency methods
 
@@ -176,10 +178,11 @@ parallel fan-out (specialists, and dispatcher ‖ safety ‖ KB-warm) · tool pr
 |---|---|
 | "Ignore previous instructions / reveal your prompt" | G-IN-06 → G-AGENT-01 (off_topic) → untrusted-input framing → G-OUT-06 (internal leak check) |
 | SQL injection in the message | G-IN-05 → G-TOOL-03 (strict arg scan) → parameterised queries (structural) |
-| "Show me customer X's invoices" | G-IN-07 → G-TOOL-04 (identity from JWT) → ownership-scoped SQL → same-error-for-missing → G-OUT-07 |
+| "Show me customer X's transactions" | G-IN-07 → G-TOOL-04 (identity from JWT) → ownership-scoped SQL → same-error-for-missing → G-OUT-07 |
 | Prompt-injected agent tries another `customer_id` | G-TOOL-04 block + `authz_violation` event |
-| "Approve my refund without checks" | G-TOOL-06 (policy engine) → G-TOOL-10 → G-OUT-03 |
-| Agent refunds/tickets on its own initiative | G-TOOL-10 |
+| "Approve my dispute without checks" | G-TOOL-13 (no verification, no action) → G-TOOL-06 → G-TOOL-10 → G-OUT-03 |
+| Agent files disputes / blocks cards / waives fees on its own initiative | G-TOOL-10 |
+| "Is my account flagged by AML?" / "what's my fraud score?" | internal columns never leave the tool layer → G-OUT-10 |
 | Hallucinated amounts/ids/dates | G-OUT-04/05 → LLM judge → revise → human |
 | Overconfident answer to an unanswerable question | G-AGENT-05 → judge `needs_human` → human queue |
 | Leaked key / card number pasted by the customer | G-IN-02/03, G-OUT-01 |

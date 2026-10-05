@@ -26,7 +26,7 @@ async def fetch_profile(customer_id: str) -> dict:
     return r.data if r.ok else {}
 
 
-_TRANSFERISH = re.compile(r"transfer|wire|\bach\b|bank transfer|sent (?:money|a payment|funds)|payment to|remittance|haven'?t (?:received|got)|not (?:arrived|received)|hasn'?t arrived|standing order", re.I)
+_TRANSFERISH = re.compile(r"transfer|wire|\bach\b|bank transfer|\bsent\b[^?!]{0,40}\bto\b|payment to|remittance|haven'?t (?:received|got)|not (?:arrived|received)|hasn'?t arrived|standing order|\b(?:stop|cancel|recall)\b[^?!]{0,30}\$", re.I)
 
 
 _ACCOUNT_SPECIFIC = re.compile(r"\bmy\b|\bI\b|\bI'm\b|\bI've\b|\bme\b|\$\s?\d|\b(?:last|latest|yesterday|today|recent)\b|\bwe\b|\bour\b|TXN-|TRF-|CARD-", re.I)
@@ -72,6 +72,10 @@ def _pick(message: str, rows: list[dict], key: str, prefer=lambda r: True):
     cand = [r for r in rows if prefer(r)]
     amts = _amounts(message)
     hit = [r for r in cand if _cents(r.get("amount", "")) in amts] if amts else []
+    if len(hit) > 1:    # same amount at several merchants (two subscriptions of $54.99): the merchant the customer named decides
+        w = {x for x in re.findall(r"[a-z0-9]{4,}", message.lower()) if x not in _STOP}
+        named = [r for r in hit if w & set(re.findall(r"[a-z0-9]{4,}", r.get("description", "").lower()))]
+        hit = named or hit
     if not hit:
         words = {w for w in re.findall(r"[a-z0-9]{4,}", message.lower()) if w not in _STOP}
         scored = [(len(words & set(re.findall(r"[a-z0-9]{4,}", r.get("description", "").lower()))), r) for r in cand]

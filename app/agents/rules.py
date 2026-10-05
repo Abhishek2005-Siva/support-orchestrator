@@ -17,7 +17,7 @@ TRIGGERS: list[tuple[str, re.Pattern]] = [
     ("bereavement", _P(r"\b(passed away|has died|deceased|bereavement|death of|late (husband|wife|father|mother|spouse)|executor of (the|an) estate)\b")),
     ("gdpr_privacy_request", _P(r"\b(data subject (access )?request|right to be forgotten|erase all my (personal )?data|delete all (my|of my) personal data|subject access request|dsar)\b")),
     ("threat_or_abuse", _P(r"\b(i('ll| will) (find|hurt|kill|destroy|ruin)|kill you|hurt you|burn|bomb|you('ll| will) regret)\b")),
-    ("sensitive_aml_topic", _P(r"\b(money laundering|structuring|why (is|was) (my|the) (wire|transfer|deposit) (under review|being reviewed|held|on hold|flagged)|source of (funds|wealth) (review|check)|compliance (hold|review))\b")),
+    ("sensitive_aml_topic", _P(r"\b(money laundering|structuring|why (is|was) (my|the) (wire|transfer|deposit) (is |was )?(under review|being reviewed|being held|held|on hold|flagged)|source of (funds|wealth) (review|check)|compliance (hold|review|check))\b")),
 ]
 
 
@@ -26,8 +26,8 @@ UNAUTH_RX = _P(r"unauthori[sz]ed|don'?t recogni[sz]e|do not recogni[sz]e|not rec
 DISPUTE_RX = _P(r"refund|money back|get (it|that|this|the (money|charge|payment)) back|(want|need|like) (it|that|this|the (charge|payment|money)|my money) (back|removed|reversed|returned)|dispute|charge ?back|revers|credit (me|it|that|the)|reimburs|"
                 r"remove (the |this |that )?(duplicate|extra|second|double|charge)|(fix|sort|resolve|correct) (this|it|that|the)\b|cancel (the )?(second|duplicate|double|extra)|give (me )?(back )?my money|take (it|that|the charge) (off|back)|pay me back")
 FEE_RX = _P(r"waive|revers|refund|remove|take (it |that |the fee )?off|credit (it |me |that )?back|reimburs|money back|get (it|that|my money) back|can (you|i) (get|have) (it|that|the fee)|cancel (the )?fee|drop (the )?fee")
-CANCEL_RX = _P(r"cancel|stop (the |this |that |my )?(transfer|payment|wire)|recall|call off|undo|revers|don'?t want (it|this|that) to (go|be sent)|abort|halt")
-BLOCK_RX = _P(r"\blost\b|stolen|stole|missing|compromis|fraud|\bblock|freez|frozen|\block\b|disable|swallowed|suspicious|hack|unauthori[sz]ed|don'?t recogni[sz]e|do not recogni[sz]e|not recogni[sz]|someone (used|has used|took)|not (me|mine)\b|didn'?t (make|authori[sz]e)|did not (make|authori[sz]e)|wasn'?t me|misplaced|can'?t find my card|left my card|pickpocket|mugged|robbed")
+CANCEL_RX = _P(r"cancel|\bstop\b[^?!]{0,30}\b(transfer|payment|wire|it)\b|recall|call off|undo|revers|don'?t want (it|this|that) to (go|be sent)|abort|halt|call back")
+BLOCK_RX = _P(r"\blost\b|stolen|stole|missing|compromis|fraud|\bblock|freez|frozen|\block\b|disable|swallowed|suspicious|hack|unauthori[sz]ed|don'?t recogni[sz]e|do not recogni[sz]e|not recogni[sz]|someone (used|has used|took)|not (me|mine)\b|didn'?t (make|authori[sz]e)|did not (make|authori[sz]e)|never (made|authori[sz]ed|approved|agreed)|not authori[sz]ed|without my (permission|knowledge)|wasn'?t me|misplaced|can'?t find my card|left my card|pickpocket|mugged|robbed")
 REPLACE_RX = _P(r"replace|replacement|new card|re-?issue|send me a (new )?card|order (me )?a (new )?card|another card")
 # the customer is asking us to ACT on money (any phrasing); used by the staged prefetch and tests
 ACTION_REQUEST_RX = _P(DISPUTE_RX.pattern + "|" + UNAUTH_RX.pattern)

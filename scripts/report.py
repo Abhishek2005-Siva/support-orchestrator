@@ -29,7 +29,7 @@ by_name = collections.defaultdict(list)
 for r in spans:
     key = r["name"]
     if key.startswith("llm."): key = "llm." + key.split(".")[1]
-    if key.startswith("agent.") and key.split(".")[1] in ("billing", "technical", "general"): key = "agent.specialist"
+    if key.startswith("agent.") and key.split(".")[1] in ("payments", "cards", "general"): key = "agent.specialist"
     by_name[(r["kind"], key)].append(r["duration_ms"])
 L += ["## Latency per node / span (ms)", "", "| kind | span | n | p50 | p95 | max |", "|---|---|---|---|---|---|"]
 for (k, n), v in sorted(by_name.items(), key=lambda kv: -sum(kv[1]))[:30]:
