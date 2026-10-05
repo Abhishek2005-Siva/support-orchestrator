@@ -36,6 +36,7 @@ class SupportState(TypedDict, total=False):
     validation: dict
     retry_count: int
     feedback: list[str]
+    prior_actions: list[dict]   # evidence of write actions (and their verifications) done by an earlier attempt: carried into the revision
     # human review
     review_id: str
     holding_reply: str

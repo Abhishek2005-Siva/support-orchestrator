@@ -314,7 +314,7 @@ def public_report(d: Derived, verification_id: str | None) -> dict:
             out["approval_note"] = "A human specialist must approve before any money moves; the customer must be told it is pending."
         out.update({k: v for k, v in d.facts.items() if k in ("block_card", "signals")})
     if d.decision == "human":
-        out["next_step"] = "Hand this case to a human specialist (set needs_human=true). Do not mention internal reviews."
+        out["next_step"] = "Hand this case to a human specialist (set needs_human=true). Keep the reply short and say only that a specialist will review it; do not speculate about why."
     return out
 
 

@@ -24,19 +24,22 @@ const staffTok = async () => { const a = staffAcct(); return a ? login(a) : null
 /* =============== agent network =============== */
 const NODES = {
   orch: { l: "Orchestrator", i: "⚙", x: 410, y: 46, w: 170, h: 44, c: "orch" },
-  guard: { l: "Input guard", i: "🛡", x: 78, y: 165 }, dispatcher: { l: "Dispatcher", i: "🧭", x: 198, y: 165 }, billing: { l: "Billing agent", i: "💳", x: 336, y: 165 },
-  technical: { l: "Technical agent", i: "🛠", x: 476, y: 165 }, general: { l: "General agent", i: "📚", x: 614, y: 165 }, escalation: { l: "Escalation agent", i: "🚨", x: 746, y: 165 },
+  guard: { l: "Input guard", i: "🛡", x: 78, y: 165 }, dispatcher: { l: "Dispatcher", i: "🧭", x: 198, y: 165 }, payments: { l: "Payments agent", i: "💸", x: 336, y: 165 },
+  cards: { l: "Cards & fraud agent", i: "💳", x: 476, y: 165 }, general: { l: "General agent", i: "📚", x: 614, y: 165 }, escalation: { l: "Escalation agent", i: "🚨", x: 746, y: 165 },
   validator: { l: "Validator", i: "✅", x: 410, y: 285 }, human: { l: "Human desk", i: "🧑‍💼", x: 746, y: 285 },
-  invoices: { l: "Billing data", i: "🗄", x: 290, y: 390, t: 1 }, policy: { l: "Refund policy", i: "⚖", x: 386, y: 390, t: 1 }, logs: { l: "Error logs", i: "📈", x: 482, y: 390, t: 1 },
-  status: { l: "Service status", i: "🟢", x: 578, y: 390, t: 1 }, kb: { l: "Knowledge base", i: "📖", x: 674, y: 390, t: 1 },
+  ledger: { l: "Ledger", i: "🗄", x: 80, y: 390, t: 1 }, transfers: { l: "Transfers", i: "🔁", x: 190, y: 390, t: 1 }, cardsdb: { l: "Cards & alerts", i: "💳", x: 300, y: 390, t: 1 },
+  policy: { l: "Verification", i: "⚖", x: 410, y: 390, t: 1 }, kgraph: { l: "Knowledge graph", i: "🕸", x: 520, y: 390, t: 1 }, kb: { l: "Help articles", i: "📖", x: 630, y: 390, t: 1 },
+  status: { l: "Channel status", i: "🟢", x: 740, y: 390, t: 1 },
 };
-const EDGES = [["orch", "guard"], ["orch", "dispatcher"], ["orch", "billing"], ["orch", "technical"], ["orch", "general"], ["orch", "escalation"], ["billing", "validator"], ["technical", "validator"], ["general", "validator"],
-  ["validator", "human"], ["escalation", "human"], ["billing", "invoices"], ["billing", "policy"], ["technical", "logs"], ["technical", "status"], ["general", "kb"], ["billing", "kb"], ["technical", "kb"]];
-const TOOLNODE = { get_invoices: "invoices", get_payment_status: "invoices", get_customer_profile: "invoices", check_refund_eligibility: "policy", create_refund_request: "policy", get_service_status: "status",
-  get_user_logs: "logs", run_diagnostic: "logs", search_knowledge_base: "kb", get_ticket_history: "human", assign_to_human: "human", create_ticket: "human" };
-const TOOLAGENT = { get_invoices: "billing", get_payment_status: "billing", check_refund_eligibility: "billing", create_refund_request: "billing", get_service_status: "technical", get_user_logs: "technical", run_diagnostic: "technical",
-  get_ticket_history: "escalation", assign_to_human: "escalation", create_ticket: "technical", get_customer_profile: "billing" };
-const AGENT_IDS = ["guard", "dispatcher", "billing", "technical", "general", "escalation", "validator"];
+const EDGES = [["orch", "guard"], ["orch", "dispatcher"], ["orch", "payments"], ["orch", "cards"], ["orch", "general"], ["orch", "escalation"], ["payments", "validator"], ["cards", "validator"], ["general", "validator"],
+  ["validator", "human"], ["escalation", "human"], ["payments", "ledger"], ["payments", "transfers"], ["payments", "policy"], ["payments", "kgraph"], ["cards", "cardsdb"], ["cards", "ledger"], ["cards", "policy"],
+  ["cards", "kgraph"], ["cards", "status"], ["general", "kb"], ["payments", "kb"], ["cards", "kb"]];
+const TOOLNODE = { get_customer_profile: "ledger", get_accounts: "ledger", get_transactions: "ledger", get_transaction_detail: "ledger", get_transfer_status: "transfers", get_cards: "cardsdb", get_fraud_alerts: "cardsdb",
+  get_policy: "policy", verify_transaction_issue: "policy", query_knowledge_graph: "kgraph", search_knowledge_base: "kb", get_service_status: "status", file_dispute: "ledger", reverse_fee: "ledger",
+  cancel_transfer: "transfers", block_card: "cardsdb", request_replacement_card: "cardsdb", get_ticket_history: "human", assign_to_human: "human", create_ticket: "human" };
+const TOOLAGENT = { get_transfer_status: "payments", reverse_fee: "payments", cancel_transfer: "payments", get_cards: "cards", get_fraud_alerts: "cards", block_card: "cards", request_replacement_card: "cards",
+  get_ticket_history: "escalation", assign_to_human: "escalation" };
+const AGENT_IDS = ["guard", "dispatcher", "payments", "cards", "general", "escalation", "validator"];
 const nodeEls = {}, edgeEls = {};
 const dims = n => ({ w: n.w || (n.t ? 92 : 118), h: n.h || (n.t ? 34 : 46) });
 const anchor = (id, side) => { const n = NODES[id], d = dims(n); return { x: n.x, y: n.y + (side === "out" ? d.h / 2 : -d.h / 2) }; };
@@ -81,9 +84,13 @@ function tline(t, icon, html, cls = "") {
 }
 const short = (o, n = 70) => { let s = typeof o === "string" ? o : JSON.stringify(o); return s.length > n ? s.slice(0, n) + "…" : s; };
 const argSummary = a => { if (!a) return ""; const x = a.args !== undefined ? a.args : a; if (typeof x === "string") return short(x, 60); return Object.entries(x || {}).map(([k, v]) => `${k}=${short(v, 28)}`).join(", "); };
-function llmAgent(n) { const k = n.split(".")[1]; return { dispatcher: "dispatcher", billing: "billing", technical: "technical", general: "general", validator: "validator", escalation: "escalation", safety: "guard", merge: "orch" }[k]; }
+function llmAgent(n) { const k = n.split(".")[1]; return { dispatcher: "dispatcher", payments: "payments", cards: "cards", general: "general", validator: "validator", escalation: "escalation", safety: "guard", merge: "orch" }[k]; }
 
-const PLAIN_TOOL = { get_invoices: "reading the customer's invoices", get_payment_status: "checking the payment status", get_customer_profile: "looking up the customer's plan", check_refund_eligibility: "asking the refund rule engine (plain code, not AI)", create_refund_request: "filing the refund request", search_knowledge_base: "searching the help articles", get_service_status: "checking if any service is down right now", get_user_logs: "reading the customer's recent error logs", run_diagnostic: "running a diagnostic", create_ticket: "opening a support ticket", get_ticket_history: "reading past tickets", assign_to_human: "assigning the case to a human" };
+const PLAIN_TOOL = { get_customer_profile: "looking up the customer", get_accounts: "reading the customer's accounts", get_transactions: "reading the transaction ledger", get_transaction_detail: "opening one transaction",
+  get_transfer_status: "tracing the transfer", get_cards: "reading the customer's cards", get_fraud_alerts: "checking fraud-monitoring alerts", get_policy: "looking up the bank policy",
+  query_knowledge_graph: "asking the knowledge graph which checks and policies apply", verify_transaction_issue: "VERIFYING against the ledger, the policy table and the knowledge graph", search_knowledge_base: "searching the help articles",
+  get_service_status: "checking channel status", file_dispute: "filing the dispute", reverse_fee: "reversing the fee", cancel_transfer: "cancelling the transfer", block_card: "blocking the card",
+  request_replacement_card: "ordering a replacement card", create_ticket: "opening a follow-up ticket", get_ticket_history: "reading past tickets", assign_to_human: "assigning the case to a human" };
 function narr(n, text, cls) { const el = $("#narr"); el.hidden = false; el.className = "narr" + (cls ? " " + cls : ""); $("#narr-n").textContent = n; $("#narr-t").innerHTML = text; }
 function narrate(ev) {
   const n = ev.name || "", o = ev.output || {}, ph = ev.phase;
@@ -91,11 +98,12 @@ function narrate(ev) {
   else if (ph === "end" && n === "guard.input" && o.action === "refuse") narr("Blocked", "<b>Stopped at the door.</b> This looks like an attack, so no AI agent or tool ever saw it.", "badb");
   else if (ph === "start" && n === "agent.dispatcher") narr("Step 2", "The <b>router</b> is working out what the customer needs and how urgent it is.");
   else if (ph === "end" && n === "agent.dispatcher") narr("Step 2", `Understood: <b>${esc((o.intents || []).join(" + ") || "unknown")}</b>, urgency <b>${esc(o.urgency || "?")}</b>. Handing it to the right specialist.`);
-  else if (ph === "start" && ["agent.billing", "agent.technical", "agent.general"].includes(n)) narr("Step 3", `The <b>${n.split(".")[1]} agent</b> is investigating using real account data.`);
+  else if (ph === "start" && ["agent.payments", "agent.cards", "agent.general"].includes(n)) narr("Step 3", `The <b>${n.split(".")[1]} agent</b> is investigating using real account data.`);
   else if (ph === "start" && ev.kind === "tool") narr("Step 3", `Tool call: ${PLAIN_TOOL[n.slice(5)] || esc(n.slice(5))}.`);
-  else if (ph === "end" && ev.kind === "tool" && n === "tool.check_refund_eligibility" && o.data) narr("Step 3", `Refund rules say: <b>${o.data.eligible ? "eligible" : "not eligible"}</b>. This decision is made by code, never by the AI.`);
+  else if (ph === "end" && ev.kind === "tool" && n === "tool.verify_transaction_issue" && o.data) narr("Step 3", `Verification result: <b>${esc(o.data.decision)}</b> (${esc(o.data.reason_code)}). Decided by code from the ledger, the policy table and the knowledge graph, never by the AI.`);
+  else if (ph === "end" && ev.kind === "tool" && o.ok && ["file_dispute", "block_card", "reverse_fee", "cancel_transfer", "request_replacement_card"].includes(n.slice(5))) narr("Step 3", `Action done: <b>${esc(PLAIN_TOOL[n.slice(5)])}</b>. It passed every gate: the customer asked, a matching verification allowed it, and it is audited.`, "good");
   else if (ph === "start" && n === "agent.escalation") narr("Step 3", "Warning signs found (angry, legal, security or the customer asked for a person). <b>Preparing a human handoff.</b>", "warnb");
-  else if (ph === "start" && n === "agent.validator") narr("Step 4", "The <b>fact-checker</b> is verifying every amount, date and invoice id in the draft against the data.");
+  else if (ph === "start" && n === "agent.validator") narr("Step 4", "The <b>fact-checker</b> is verifying every amount, date and transaction id in the draft against the data.");
   else if (ph === "end" && n === "agent.validator") o.verdict === "approve" ? narr("Step 5", "<b>Checked and approved.</b> Every fact in the reply matches the data. Sent to the customer.", "good") : narr("Held", "<b>The fact-checker wasn't satisfied</b>, so nothing risky was sent. A human will review it.", "warnb");
 }
 function narrDone(res, scen) {
@@ -110,12 +118,12 @@ function onTrace(ev) {
     else if (n === "guard.safety_model") { setNode("guard", "active", "safety model"); }
     else if (n.startsWith("agent.")) {
       const id = n.split(".")[1]; setNode(id, "active", "working"); if (id !== "validator") flow("orch", id); run.active.push(id);
-      if (["billing", "technical", "general"].includes(id)) run.lastSpec = id;
-      if (id === "validator") { run.active.filter(a => ["billing", "technical", "general"].includes(a)).forEach(a => flow(a, "validator")); if (!run.active.some(a => ["billing", "technical", "general"].includes(a))) flow("orch", "validator"); }
+      if (["payments", "cards", "general"].includes(id)) run.lastSpec = id;
+      if (id === "validator") { run.active.filter(a => ["payments", "cards", "general"].includes(a)).forEach(a => flow(a, "validator")); if (!run.active.some(a => ["payments", "cards", "general"].includes(a))) flow("orch", "validator"); }
       tline(t, "▶", `<b>${esc(NODES[id]?.l || id)}</b> activated`);
     } else if (ev.kind === "tool") {
-      const tn = n.slice(5), node = TOOLNODE[tn], ag = TOOLAGENT[tn] === "billing" || TOOLAGENT[tn] === "technical" || TOOLAGENT[tn] === "escalation" ? TOOLAGENT[tn] : (run.lastSpec || "general");
-      const owner = tn === "search_knowledge_base" ? (run.lastSpec || "general") : ag;
+      const tn = n.slice(5), node = TOOLNODE[tn], ag = TOOLAGENT[tn] || (run.lastSpec || "general");
+      const owner = ag;
       run.toolCount++; if (node && node !== "human") { setNode(node, "active", "called"); flow(owner, node, false, 900); } else if (node === "human") setNode("human", "active", "queueing");
       const rec = { id: ev.id, name: tn, args: ev.input?.args ?? ev.input, t, status: "running", node }; run.tools.push(rec); renderTools();
       tline(t, "→", `<code>${esc(tn)}</code>(${esc(argSummary(ev.input))})`); renderState();
@@ -134,7 +142,7 @@ function onTrace(ev) {
       run.dispatch = o; setNode("dispatcher", "done", fmt(ev.ms));
       tline(t, "✓", `Intent detected: <b>${esc((o.intents || []).join(" + "))}</b> · urgency ${esc(o.urgency)} · sentiment ${esc(o.sentiment)} · confidence ${Math.round((o.confidence || 0) * 100)}%`, "ok");
       if ((o.forced_escalation_reasons || []).length) tline(t, "🔐", `Deterministic escalation triggers: <b>${esc(o.forced_escalation_reasons.join(", "))}</b>`, "pol");
-      if (o.refund_requested) tline(t, "🔐", "Dispatcher flagged an explicit <b>refund request</b> (enables the gated write)", "pol");
+      if (o.action_requested) tline(t, "🔐", "Dispatcher flagged that the customer <b>asked us to act</b> (a necessary condition for any write)", "pol");
       run.checks.dispatch = o; renderSec(); renderState();
     } else if (n.startsWith("agent.") && n !== "agent.validator") {
       const id = n.split(".")[1]; setNode(id, ev.status === "ok" ? "done" : "blocked", fmt(ev.ms));
@@ -153,8 +161,10 @@ function onTrace(ev) {
       if (rec?.node && rec.node !== "human") setNode(rec.node, o.blocked ? "blocked" : "done", o.blocked ? "BLOCKED" : fmt(ev.ms));
       const sum = o.blocked ? `⛔ blocked: ${esc(o.error)}` : o.ok ? esc(toolSummary(tn, d)) : `✗ ${esc(o.error)}`;
       tline(t, o.blocked ? "⛔" : o.ok ? "✓" : "✗", `<code>${esc(tn)}</code> → ${sum} <span class="muted">${fmt(ev.ms)}</span>`, o.blocked ? "bad" : o.ok ? "ok" : "warn");
-      if (tn === "check_refund_eligibility" && o.ok && d) { run.checks.policy = d; tline(t, "🔐", `Policy engine: <b>${d.eligible ? "REFUND_ELIGIBLE" : "REFUND_DENIED"}</b> (${esc(d.reason_code)}) · ${esc(d.refundable_usd || "")}${d.requires_approval ? " · <b>needs human approval</b>" : ""}`, "pol"); }
-      if (tn === "create_refund_request") { run.checks.refundWrite = { ok: o.ok, blocked: o.blocked, err: o.error, d }; if (o.ok && d) tline(t, "🔐", `Refund <b>${esc(d.refund_id)}</b> filed: status <b>${esc(d.status)}</b>, ${esc(d.amount)}`, "pol"); }
+      if (tn === "verify_transaction_issue" && o.ok && d) { (run.verifs ||= []).push(d); run.checks.verify = d; const cons = d.consulted || {};
+        tline(t, "🔐", `Verification <b>${esc(d.decision)}</b> · ${esc(d.reason_code)}<br><small>consulted ${(cons.database_tables || []).length} tables, ${(cons.policies || []).length} policies, ${(cons.knowledge_graph_paths || []).length} knowledge-graph paths${d.approval === "required" ? " · <b>needs human approval</b>" : ""}</small>`, "pol"); }
+      if (["file_dispute", "reverse_fee", "cancel_transfer", "block_card", "request_replacement_card"].includes(tn)) { (run.writes ||= []).push({ tn, ok: o.ok, blocked: o.blocked, err: o.error, d });
+        if (o.ok && d) tline(t, "🔐", `<b>${esc(PLAIN_TOOL[tn])}</b>: ${esc(toolSummary(tn, d))}`, "pol"); }
       if (tn === "assign_to_human" && o.ok && d) { run.checks.assign = d; setNode("human", "waiting", d.priority); }
       if (o.blocked) run.checks.blockedTool = { tn, err: o.error }; renderTools(); renderSec();
     } else if (ev.kind === "llm") {
@@ -170,13 +180,17 @@ function onTrace(ev) {
   }
 }
 function toolSummary(tn, d) {
-  if (!d) return "ok"; if (tn === "get_invoices") return `${d.count} invoices (latest ${d.invoices?.[0]?.invoice_id} ${d.invoices?.[0]?.amount} ${d.invoices?.[0]?.status})`;
-  if (tn === "search_knowledge_base") return d.no_relevant_article ? "no relevant article" : `${(d.results || []).length} articles (${d.match_quality || "strong"} match)`;
-  if (tn === "get_service_status") return d.all_operational ? "all components operational" : "incident open: " + (d.components || []).filter(c => c.status !== "operational").map(c => c.component + " " + c.status).join(", ");
-  if (tn === "get_user_logs") return d.total_events ? `${d.total_events} events (top: ${d.by_code?.[0]?.code})` : "no recent errors";
-  if (tn === "check_refund_eligibility") return `${d.eligible ? "eligible" : "not eligible"} · ${d.reason_code}`; if (tn === "create_refund_request") return `${d.refund_id} ${d.status}`;
-  if (tn === "assign_to_human") return `${d.review_id} ${d.priority}`; if (tn === "get_customer_profile") return `${d.plan} plan · ${d.tier}`; if (tn === "run_diagnostic") return `${d.check}: ${d.healthy ? "healthy" : "problem"}`;
-  return short(d, 70);
+  if (!d) return "ok"; const L = { get_transactions: () => `${d.count} transactions (newest ${d.transactions?.[0]?.txn_id} ${d.transactions?.[0]?.amount} ${d.transactions?.[0]?.status})`,
+    get_transaction_detail: () => `${d.txn_id} ${d.amount} ${d.status} at ${d.merchant || d.description}`, get_accounts: () => `${(d.accounts || []).length} accounts`,
+    get_transfer_status: () => (d.transfers || []).slice(0, 2).map(t => `${t.transfer_id} ${t.rail} ${t.amount} ${t.status}`).join("; "), get_cards: () => (d.cards || []).map(c => `${c.network} ••${c.last4} ${c.status}`).join(", "),
+    get_fraud_alerts: () => `${(d.alerts || []).length} alerts`, get_policy: () => (d.policies || []).map(p => p.policy).join(", ") || "no match",
+    query_knowledge_graph: () => d.checks ? `${d.checks.length} checks, ${(d.policies || []).length} policies, ${(d.regulations || []).length} regulations` : `${(d.related || []).length} related entities`,
+    verify_transaction_issue: () => `${d.decision} · ${d.reason_code}`, file_dispute: () => `${d.dispute_id} ${d.status} ${d.amount}`, reverse_fee: () => `${d.reversal_txn} ${d.amount} ${d.status}`,
+    cancel_transfer: () => `${d.transfer_id} ${d.status}`, block_card: () => `card ••${d.last4} ${d.status}`, request_replacement_card: () => `${d.new_card_id} ${d.status}`,
+    search_knowledge_base: () => d.no_relevant_article ? "no relevant article" : `${(d.results || []).length} articles (${d.match_quality || "strong"} match)`,
+    get_service_status: () => d.all_operational ? "all channels operational" : "degraded: " + (d.components || []).filter(c => c.status !== "operational").map(c => c.component).join(", "),
+    assign_to_human: () => `${d.review_id} ${d.priority}`, get_customer_profile: () => `${d.segment} · ${d.identity_verified ? "identity verified" : "identity pending"}`, create_ticket: () => `${d.ticket_id}` };
+  try { return (L[tn] || (() => short(d, 70)))(); } catch (e) { return short(d, 70); }
 }
 function renderTools() {
   const el = $("#tools"); if (!run || !run.tools.length) return; $("#tl-total").textContent = run.tools.length + " calls";
@@ -185,7 +199,7 @@ function renderTools() {
   $$(".tc", el).forEach(c => c.onclick = () => c.classList.toggle("open"));
 }
 const SEC_ROWS = [["g1", "Input sanitising & secret masking"], ["g2", "SQL-injection scan"], ["g3", "Prompt-injection check"], ["g4", "Content-safety model"], ["g5", "Topic control & escalation triggers"],
-  ["g6", "Identity & tool allow-list"], ["g7", "Write gates (refund / ticket)"], ["g8", "Policy engine (refund rules)"], ["g9", "Output validation"], ["g10", "Human review"]];
+  ["g6", "Identity & tool allow-list"], ["g7", "Write gates (customer must ask)"], ["g8", "Verification (policies + knowledge graph)"], ["g9", "Output validation"], ["g10", "Human review"]];
 function renderSec() {
   const c = run?.checks || {}, g = c.guard, rows = {};
   rows.g1 = !g ? ["wait", "waiting"] : g.masked ? ["info", "card / secret found and masked before any AI saw it"] : ["pass", "text cleaned; nothing sensitive found"];
@@ -194,16 +208,17 @@ function renderSec() {
   rows.g4 = !c.safety ? (g ? ["wait", "running in parallel / skipped"] : ["wait", "waiting"]) : c.safety.unsafe ? ["warn", "unsafe content: escalated"] : c.safety.err ? ["info", "unavailable (fails open)"] : ["pass", "safe"];
   const d = c.dispatch; rows.g5 = !d ? (g?.bad ? ["info", "not reached"] : ["wait", "waiting"]) : (d.intents || []).includes("off_topic") ? ["block", "off-topic: polite refusal, no tools"] : (d.forced_escalation_reasons || []).length ? ["warn", "forced escalation: " + d.forced_escalation_reasons.join(", ")] : ["pass", "intent " + (d.intents || []).join(" + ")];
   const tools = run?.tools || [], bt = c.blockedTool; rows.g6 = bt ? ["block", `${bt.tn}: ${bt.err}`] : tools.length ? ["pass", `${tools.length} calls, all scoped to the signed-in customer`] : (g?.bad ? ["info", "no tools reached"] : ["wait", "waiting"]);
-  const w = c.refundWrite; rows.g7 = w ? (w.blocked ? ["block", w.err] : w.ok ? ["pass", `refund filed through all gates (${w.d?.status})`] : ["warn", w.err || "not filed"]) : tools.some(t => t.name === "create_ticket") ? ["pass", "ticket only on request"] : tools.length || run?.result ? ["info", "no write attempted"] : ["wait", "waiting"];
-  const p = c.policy; rows.g8 = p ? [p.eligible ? "pass" : "warn", `${p.eligible ? "eligible" : "denied"}: ${p.reason_code}${p.requires_approval ? ", over limit → human approval" : ""}`] : tools.length || run?.result ? ["info", "not needed for this request"] : ["wait", "waiting"];
+  const ws = run?.writes || [], wb = ws.find(x => x.blocked), wk = ws.filter(x => x.ok);
+  rows.g7 = wb ? ["block", wb.err] : wk.length ? ["pass", wk.map(x => x.tn).join(", ") + " passed every gate"] : tools.some(t => t.name === "create_ticket") ? ["pass", "ticket only on request"] : tools.length || run?.result ? ["info", "no write attempted"] : ["wait", "waiting"];
+  const vf = c.verify; rows.g8 = vf ? [vf.decision === "act" ? "pass" : vf.decision === "human" ? "warn" : "info", `${vf.decision}: ${vf.reason_code}${vf.approval === "required" ? ", over the auto limit → human approval" : ""}`] : tools.length || run?.result ? ["info", "not needed for this request"] : ["wait", "waiting"];
   const v = c.validator; rows.g9 = v ? [v.verdict === "approve" ? "pass" : "warn", `${v.verdict} (${Math.round((v.confidence || 0) * 100)}%)${(v.issues || []).length ? ": " + v.issues.slice(0, 2).join(", ") : ""}`] : g?.bad ? ["info", "not needed"] : ["wait", "waiting"];
-  const esc2 = c.escalation || c.assign || (run?.result?.status === "human_review"); rows.g10 = run?.result ? (esc2 ? ["warn", "escalated: " + (run.result.review_id || "")] : run.result.flags?.requires_human_approval ? ["warn", "refund awaiting approval"] : ["pass", "not needed"]) : ["wait", "waiting"];
+  const esc2 = c.escalation || c.assign || (run?.result?.status === "human_review"); rows.g10 = run?.result ? (esc2 ? ["warn", "escalated: " + (run.result.review_id || "")] : run.result.flags?.requires_human_approval ? ["warn", "dispute awaiting approval"] : ["pass", "not needed"]) : ["wait", "waiting"];
   const ic = { pass: "✓", block: "⛔", info: "ℹ", wait: "○", warn: "⚠" };
   $("#sec").innerHTML = SEC_ROWS.map(([k, l]) => { const [s, t] = rows[k]; return `<div class="sc ${s}"><span class="ic">${ic[s]}</span><div><b>${l}</b><small>${esc(t)}</small></div></div>`; }).join("");
 }
 function risk() {
   const d = run?.dispatch || {}, r = run?.result; if (r?.status === "rejected") return ["BLOCKED", "attack stopped by the guardrails"];
-  const rs = d.forced_escalation_reasons || []; if (rs.some(x => ["legal_threat", "data_breach_security", "threat_or_abuse", "fraud_or_chargeback"].includes(x)) || d.urgency === "critical") return ["HIGH", rs.join(", ") || "critical urgency"];
+  const rs = d.forced_escalation_reasons || []; if (rs.some(x => ["legal_threat", "account_takeover_or_scam", "threat_or_abuse", "bereavement"].includes(x)) || d.urgency === "critical") return ["HIGH", rs.join(", ") || "critical urgency"];
   if (r?.status === "human_review" || r?.flags?.requires_human_approval || d.urgency === "high" || ["angry", "negative"].includes(d.sentiment)) return ["MEDIUM", r?.flags?.requires_human_approval ? "money above the auto limit" : "frustrated customer / human needed"];
   return ["LOW", "routine request"];
 }
@@ -282,7 +297,8 @@ function buildScenarios() {
 async function runScenario(s, btn) {
   if (S.busy) return; $$(".sbtn").forEach(x => x.classList.toggle("sel", x === btn)); $("#scen-hint").textContent = s.hint;
   if (s.account !== "any") { const a = S.accounts.find(x => x.key === s.account); if (a && S.cur?.client_id !== a.client_id) { if (!(await useAccount(a))) return; } }
-  await send(s.message, s);
+  const f = (S.accounts.find(x => x.key === s.account) || S.cur || {}).facts || {};
+  await send(s.message.replace(/\{(\w+)\}/g, (_, k) => f[k] ?? "{" + k + "}"), s);
 }
 
 /* =============== scheduler =============== */
@@ -317,18 +333,18 @@ function explain() {
   if (g) gi.push(g.bad ? `The <b>input guard</b> stopped it immediately (${esc(g.reasons.join(", "))}). This check is plain code, so no AI model ever saw the message and no tool was touched.` : `The <b>input guard</b> cleaned the text and checked it for injection (score ${g.score ?? 0}) and SQL patterns.${g.masked ? " A card number or secret was found and <b>masked</b> before any model could see it." : ""}`);
   if (c.safety) gi.push(`A separate content-safety model rated it <b>${c.safety.unsafe ? "unsafe" : "safe"}</b>.`);
   sec("Safety checks before any AI", gi);
-  if (d) sec("What the system understood", [`The <b>dispatcher</b> classified the request as <b>${esc((d.intents || []).join(" + "))}</b> (urgency ${esc(d.urgency)}, sentiment ${esc(d.sentiment)}, confidence ${Math.round((d.confidence || 0) * 100)}%).${d.reasoning ? " Its reasoning: <i>" + esc(d.reasoning) + "</i>." : ""}${(d.forced_escalation_reasons || []).length ? `<br>Fixed rules (not the AI) added an escalation because of: <b>${esc(d.forced_escalation_reasons.join(", "))}</b>.` : ""}${d.refund_requested ? "<br>It also recognised an explicit <b>request for a refund</b>, which is what allows a refund to be filed." : ""}`]);
+  if (d) sec("What the system understood", [`The <b>dispatcher</b> classified the request as <b>${esc((d.intents || []).join(" + "))}</b> (urgency ${esc(d.urgency)}, sentiment ${esc(d.sentiment)}, confidence ${Math.round((d.confidence || 0) * 100)}%).${d.reasoning ? " Its reasoning: <i>" + esc(d.reasoning) + "</i>." : ""}${(d.forced_escalation_reasons || []).length ? `<br>Fixed rules (not the AI) added an escalation because of: <b>${esc(d.forced_escalation_reasons.join(", "))}</b>.` : ""}${d.action_requested ? "<br>It also recognised that the customer <b>asked us to act</b>, which is one of the conditions for a write." : ""}`]);
   if (tools.length) sec("What the agents did", tools.map(t => `<code>${esc(t.name)}</code>(${esc(argSummary(t.args))}) → ${t.status === "ok" ? esc(toolSummary(t.name, t.out?.data)) : "<b>" + esc(t.status) + "</b>: " + esc(t.err || "")} <small>(${fmt(t.ms)})</small>`));
-  const pol = []; if (c.policy) pol.push(`The <b>refund policy engine</b> (code, not AI) decided: <b>${c.policy.eligible ? "eligible" : "not eligible"}</b> (${esc(c.policy.reason_code)}). ${esc(c.policy.explanation || "")}${c.policy.requires_approval ? ` Because the amount exceeds the auto-approval limit, a human must approve it.` : ""}`);
-  if (c.refundWrite?.ok) pol.push(`The refund write passed every gate: the customer asked, the dispatcher agreed, eligibility was re-checked inside the tool, and it is idempotent and audited. Status: <b>${esc(c.refundWrite.d?.status)}</b>.`);
-  if (c.refundWrite?.blocked) pol.push(`A refund write was <b>blocked</b>: ${esc(c.refundWrite.err)}.`);
-  if (c.blockedTool && !c.refundWrite?.blocked) pol.push(`A tool call was <b>blocked</b>: ${esc(c.blockedTool.tn)}: ${esc(c.blockedTool.err)}.`);
+  const pol = []; (run.verifs || []).forEach(vf => { const cons = vf.consulted || {};
+    pol.push(`<b>Verification ${esc(vf.verification_id || "")}</b> (${esc(vf.issue_type)}): decision <b>${esc(vf.decision)}</b> (${esc(vf.reason_code)}). ${esc(vf.explanation || "")}<br><small>Consulted: tables ${esc((cons.database_tables || []).join(", "))}; policies ${esc((cons.policies || []).join(", "))}; regulations ${esc((cons.regulations || []).join(", "))}; ${(cons.knowledge_graph_paths || []).length} knowledge-graph paths; help articles ${esc((cons.knowledge_base || []).join(", "))}.</small>${vf.approval === "required" ? " A human must approve before any money moves." : ""}`); });
+  (run.writes || []).forEach(w => pol.push(w.ok ? `<b>${esc(w.tn)}</b> passed every gate: the customer asked, the dispatcher agreed, a matching verification allowed it and was re-derived inside the tool, and the write is idempotent and audited. Result: ${esc(toolSummary(w.tn, w.d))}.` : `<b>${esc(w.tn)}</b> was <b>blocked</b>: ${esc(w.err)}.`));
+  if (c.blockedTool && !(run.writes || []).some(w => w.blocked)) pol.push(`A tool call was <b>blocked</b>: ${esc(c.blockedTool.tn)}: ${esc(c.blockedTool.err)}.`);
   if (tools.length && !pol.length) pol.push("Every tool call was scoped to the signed-in customer; the AI cannot choose whose data to read.");
   if (pol.length) sec("Policy and permissions applied", pol);
   const v = c.validator; if (v) sec("Verification before replying", [`The <b>validator</b> re-checked every amount, date, id and claim in the draft against what the tools returned, then an independent AI judge checked it claim by claim. Verdict: <b>${esc(v.verdict)}</b> (${Math.round((v.confidence || 0) * 100)}%).${(v.issues || []).length ? " Issues: " + esc(v.issues.join(", ")) + "." : ""}`]);
-  const why = r.status === "rejected" ? "The message was blocked by the guardrails, so the customer received a safe refusal." : r.status === "human_review" ? "A person has to take over: either fixed rules demanded it (legal, security, anger, repeat contact, explicit request) or the system could not answer safely. The customer got an honest holding message with a reference number." : r.flags?.requires_human_approval ? "The answer was delivered, but the refund is only <b>pending</b> until a human approves it; the reply says so." : "The reply passed all checks and was delivered.";
+  const why = r.status === "rejected" ? "The message was blocked by the guardrails, so the customer received a safe refusal." : r.status === "human_review" ? "A person has to take over: either fixed rules demanded it (legal, security, anger, repeat contact, explicit request) or the system could not answer safely. The customer got an honest holding message with a reference number." : r.flags?.requires_human_approval ? "The answer was delivered, but the dispute is only <b>pending</b>: a human must approve the provisional credit before any money moves, and the reply says so." : "The reply passed all checks and was delivered.";
   sec("Outcome", [`<b>${esc(r.status)}</b> in ${fmt(r.latency_ms)}. ${why}`]);
-  const no = []; if (!c.refundWrite && /refund|money back/i.test(run.text)) no.push("No refund was filed: " + (c.policy && !c.policy.eligible ? "the policy denied it." : "the message was a question, not a request, or it was not eligible."));
+  const no = []; if (!(run.writes || []).some(w => w.ok) && /refund|money back|dispute|waive|cancel|block/i.test(run.text)) no.push("No action was taken: " + (c.verify && c.verify.decision !== "act" ? `the verification said <b>${esc(c.verify.decision)}</b> (${esc(c.verify.reason_code)}).` : "the message was a question rather than a request, or it was not allowed."));
   if (!tools.some(t => t.name === "create_ticket")) no.push("No support ticket was opened (only done when the customer asks for one).");
   if (r.status !== "rejected") no.push("The AI never invented amounts or dates: anything not found in the tool results would have been revised or sent to a human.");
   if (no.length) sec("What it deliberately did not do", no);
@@ -336,14 +352,14 @@ function explain() {
 }
 
 /* =============== human escalation desk + queue =============== */
-const isApproval = i => (i.reason || "").startsWith("refund above auto-approval");
+const isApproval = i => (i.reason || "").startsWith("dispute approval needed");
 function caseHtml(i) {
   const open = i.status === "pending", appr = isApproval(i);
-  return `<h2><span class="pr ${i.priority}">${i.priority}</span>${esc(i.review_id)} <small class="muted">${esc(i.status)}${appr ? " · refund approval" : ""}</small></h2><p class="muted">${esc(i.reason)}</p>
+  return `<h2><span class="pr ${i.priority}">${i.priority}</span>${esc(i.review_id)} <small class="muted">${esc(i.status)}${appr ? " · dispute approval" : ""}</small></h2><p class="muted">${esc(i.reason)}</p>
   <h4>Customer wrote</h4><div class="box">${esc(i.customer_message)}</div><h4>AI summary for the specialist</h4><div class="box">${esc(i.summary)}</div>
-  <h4>${appr ? "What the customer was told (refund pending)" : "Draft reply (NOT sent to the customer)"}</h4><div class="box">${esc(i.draft_reply || "No draft: please write a reply.")}</div>
+  <h4>${appr ? "What the customer was told (provisional credit pending)" : "Draft reply (NOT sent to the customer)"}</h4><div class="box">${esc(i.draft_reply || "No draft: please write a reply.")}</div>
   ${!appr && i.holding_reply ? `<h4>Holding message the customer already received</h4><div class="box">${esc(i.holding_reply)}</div>` : ""}
-  ${open ? (appr ? `<div class="row"><button class="btn good" data-a="approve">Approve refund</button><button class="btn bad" data-a="reject">Reject refund</button></div>`
+  ${open ? (appr ? `<div class="row"><button class="btn good" data-a="approve">Approve provisional credit</button><button class="btn bad" data-a="reject">Reject</button></div>`
     : `<h4>Your reply</h4><textarea id="edit" rows="4">${esc(i.draft_reply || "")}</textarea><div class="row"><button class="btn good" data-a="approve" ${i.draft_reply ? "" : "disabled"}>Approve draft</button><button class="btn alt" data-a="edit">Edit &amp; send</button><button class="btn bad" data-a="reject">Reject</button></div>`)
     : `<p class="muted">Resolved by ${esc(i.reviewer || "-")}.</p>`}`;
 }
@@ -391,16 +407,16 @@ function buildDesign() {
 }
 
 /* =============== boot =============== */
-function view(v) { ["console", "design", "queue"].forEach(x => $("#v-" + x).hidden = x !== v); $$("#nav button").forEach(b => b.classList.toggle("on", b.dataset.v === v)); if (v === "queue") loadQueue(); }
+function view(v) { ["console", "data", "design", "queue"].forEach(x => $("#v-" + x).hidden = x !== v); $$("#nav button").forEach(b => b.classList.toggle("on", b.dataset.v === v)); if (v === "queue") loadQueue(); if (v === "data" && window.renderData) renderData(); $("#narr").style.display = v === "console" ? "" : "none"; }
 async function boot() {
-  buildNet(); buildScenarios(); buildDesign(); initSchedule(); renderSec(); renderState(); renderAgents();
+  buildNet(); buildScenarios(); buildDesign(); initSchedule(); initData(); renderSec(); renderState(); renderAgents();
   $("#nav").onclick = e => { const b = e.target.closest("button"); if (b) view(b.dataset.v); };
   $("#composer").onsubmit = e => { e.preventDefault(); send($("#msg").value); }; $("#msg").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("#msg").value); } }); $("#msg").addEventListener("input", grow);
   const intro = $("#intro"), closeIntro = () => { intro.hidden = true; try { sessionStorage.setItem("seen", "1"); } catch (e) { } };
   $("#how").onclick = () => { intro.hidden = false; };
   $("#i-try").onclick = () => { closeIntro(); $("#msg").focus(); };
   const play = id => async () => { closeIntro(); const s = SCENARIOS.find(x => x.id === id); await waitIdleReady(); runScenario(s, $$(".sbtn").find(b => b.dataset.id === id)); };
-  $("#i-demo").onclick = play("dup"); $("#i-attack").onclick = play("inj");
+  $("#i-demo").onclick = play("dup"); $("#i-attack").onclick = play("inj"); $("#i-data").onclick = async () => { closeIntro(); await waitIdleReady(); DS.tab = "graph"; DS.focus = "issue:duplicate_charge"; view("data"); };
   try { if (!sessionStorage.getItem("seen")) intro.hidden = false; } catch (e) { intro.hidden = false; }
  $$("[data-close]").forEach(b => b.onclick = () => b.closest("dialog").close()); $("#explain").onclick = explain; $("#esc").onclick = openDesk; $("#dclose2").onclick = () => $("#drawer").hidden = true;
   $("#qrefresh").onclick = loadQueue; $("#qf").onclick = e => { const b = e.target.closest("button"); if (!b) return; S.qfilter = b.dataset.s; $$("#qf button").forEach(x => x.classList.toggle("on", x === b)); loadQueue(); };
@@ -411,6 +427,6 @@ async function boot() {
   if (!S.accounts.length) { $("#live").className = "live off"; $("#live-t").textContent = "demo accounts unavailable"; $("#thread").innerHTML = `<p class="empty">Demo accounts are disabled or the server is unreachable.</p>`; return; }
   const custs = S.accounts.filter(a => a.role === "customer"); $("#acct").innerHTML = custs.map(a => `<option value="${esc(a.client_id)}">${esc(a.client_id)} · test data: ${esc(a.label.toLowerCase())}</option>`).join(""); $("#acct-wrap").hidden = false;
   if (staffAcct()) $("#nav-queue").hidden = false; $("#live").className = "live on"; $("#live-t").textContent = "LIVE";
-  await useAccount(custs.find(a => a.key === "failed_payment") || custs[0]); if (staffAcct()) { loadQueue(); }
+  await useAccount(custs.find(a => a.key === "dup_posted") || custs[0]); if (staffAcct()) { loadQueue(); } if (window.fillIntroNums) fillIntroNums();
 }
 boot();

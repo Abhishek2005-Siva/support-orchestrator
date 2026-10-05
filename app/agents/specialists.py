@@ -223,10 +223,15 @@ def staged_followup(agent: str, message: str, action_requested: bool):
 
 async def run_specialist(agent: str, *, message: str, customer_id: str, query_id: str, profile: dict | None = None,
                          dispatch: dict | None = None, history: list[dict] | None = None, feedback: list[str] | None = None,
-                         foreign_ids: list[str] | None = None, ctx: ToolContext | None = None, sub_question: str | None = None) -> SpecialistResponse:
+                         foreign_ids: list[str] | None = None, ctx: ToolContext | None = None, sub_question: str | None = None,
+                         prior_actions: list[dict] | None = None) -> SpecialistResponse:
     profile = profile if profile is not None else await fetch_profile(customer_id)
     action = (dispatch or {}).get("action_requested") if dispatch else None
     ctx = ctx or ToolContext(customer_id=customer_id, query_id=query_id, agent=agent, message=message, action_requested=action)
+    for e in prior_actions or []:  # actions an earlier attempt already performed: keep them as evidence (the validator grounds claims in it)
+        ctx.evidence.append(e)
+        if e.get("tool") == "file_dispute" and (e.get("result") or {}).get("status") == "pending_approval":
+            ctx.flags["requires_human_approval"] = True
     if profile:  # the verified profile is shown to the model in its prompt, so it must be visible to the validator as evidence
         ctx.evidence.append({"tool": "get_customer_profile", "args": {}, "source": "db:customer", "result": profile})
     today = (await business_today()).isoformat()

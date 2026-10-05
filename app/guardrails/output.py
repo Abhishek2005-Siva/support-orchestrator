@@ -200,9 +200,10 @@ def check_output(reply: str, ctx: OutputContext) -> list[ValidationIssue]:
     # evidence of absence). Hedged phrasing ("not mentioned in the knowledge base") is the honest form and is allowed here
     # (the uncertainty detector routes it to a human).
     ev_words = set(re.findall(r"[a-z0-9][a-z0-9\-]+", ev_txt))
+    verified = any(e.get("tool") == "verify_transaction_issue" for e in ctx.evidence)   # a policy denial ("another waiver isn't available") is grounded in the verification, not a product claim
     for sent in re.split(r"(?<=[.!?])\s+", text):
         m = _NEGATIVE.search(sent)
-        if not m or _HEDGED.search(sent) or _FIRST_PERSON.search(sent):
+        if not m or _HEDGED.search(sent) or _FIRST_PERSON.search(sent) or verified:
             continue
         obj = [w for w in re.findall(r"[a-z0-9][a-z0-9\-]+", m.group(1).lower()) if w not in _STOPW and len(w) > 2]
         if obj and sum(w in ev_words or w.rstrip("s") in ev_words for w in obj) / len(obj) < 0.67:

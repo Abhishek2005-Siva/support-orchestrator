@@ -11,6 +11,7 @@ Guardrail / reliability map (ids in docs/guardrails.md):
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 
 from langgraph.types import interrupt
@@ -29,6 +30,7 @@ from app.llm.gateway import get_gateway
 from app.observability.tracing import tracer
 from app.schemas.models import SpecialistResponse
 
+ACTION_TOOLS = {"file_dispute", "reverse_fee", "cancel_transfer", "block_card", "request_replacement_card"}
 OFF_TOPIC_REPLY = ("I'm here to help with Orbit Bank: your accounts, cards, payments and transfers. I can't help with that request, "
                    "but if you have a banking question I'm happy to help.")
 FOREIGN_REPLY = "I can only help with your own account, so I can't look up or share information about other accounts."
@@ -126,7 +128,13 @@ async def kb_warm(state: SupportState) -> dict:
 async def triage(state: SupportState) -> dict:
     dec = dict(state["dispatch"])
     safety = state.get("safety") or {}
-    if safety.get("unsafe"):
+    banking = any(i in ("payments", "cards", "general") for i in dec["intents"]) and "off_topic" not in dec["intents"] and dec.get("confidence", 0) >= 0.8
+    if safety.get("unsafe") and banking and not dec.get("forced_escalation_reasons") and dec.get("sentiment") != "angry":
+        # The general-purpose safety classifier flags ordinary banking vocabulary ("block my card", "my card was stolen"): when the dispatcher is
+        # confident this is a normal banking request and no deterministic trigger fired, the verdict is advisory (logged, not escalated). See case study #18.
+        await log_security_event("unsafe_content_advisory", f"safety model flagged a confident banking request: {safety.get('raw')}", query_id=state["query_id"],
+                                 customer_id=state["customer_id"], blocked=False)
+    elif safety.get("unsafe"):
         reasons = list(dec.get("forced_escalation_reasons", []))
         if "unsafe_content" not in reasons:
             reasons.append("unsafe_content")
@@ -168,7 +176,8 @@ async def specialist_node(arg: dict) -> dict:
     try:
         r = await run_specialist(agent, message=arg["message"], customer_id=arg["customer_id"], query_id=arg["query_id"],
                                  profile=arg.get("profile"), dispatch=arg.get("dispatch"), history=arg.get("history"),
-                                 feedback=arg.get("feedback"), foreign_ids=arg.get("foreign"), sub_question=arg.get("sub_question"))
+                                 feedback=arg.get("feedback"), foreign_ids=arg.get("foreign"), sub_question=arg.get("sub_question"),
+                                 prior_actions=arg.get("prior_actions"))
         return {"specialist_outputs": [r.model_dump()]}
     except Exception as e:  # contain failures: this branch becomes a "needs human" output
         tracer.event("specialist.failed", agent=agent, error=f"{type(e).__name__}: {str(e)[:200]}")
@@ -251,8 +260,13 @@ def route_after_validation(state: SupportState):
 
 async def revise(state: SupportState) -> dict:
     fb = [f"[{i['code']}] {i['detail']}" for i in state["validation"]["issues"] if i["severity"] in ("critical", "warning")][:6]
+    done = [e for e in state["merged"].get("evidence", []) if e.get("tool") in ACTION_TOOLS | {"verify_transaction_issue"} and isinstance(e.get("result"), dict)]
+    acts = [e for e in done if e["tool"] in ACTION_TOOLS]
+    if acts:  # the revision starts from scratch, so it must be told what the first attempt already DID (else it re-reads the result as 'already existed')
+        fb.append("ACTIONS ALREADY COMPLETED earlier in this conversation: they are done, never say they could not be done or call those tools again; describe them accurately using exactly these results: "
+                  + json.dumps([{"action": e["tool"], "result": e["result"]} for e in acts], default=str)[:1500])
     tracer.event("graph.revise", attempt=state.get("retry_count", 0) + 1, feedback=fb)
-    return {"retry_count": state.get("retry_count", 0) + 1, "feedback": fb, "specialist_outputs": ["RESET"]}
+    return {"retry_count": state.get("retry_count", 0) + 1, "feedback": fb, "prior_actions": done, "specialist_outputs": ["RESET"]}
 
 
 def route_revise(state: SupportState):
@@ -261,6 +275,7 @@ def route_revise(state: SupportState):
     base["message"] = state["clean_message"]
     base["foreign"] = (state.get("input") or {}).get("foreign") or []
     base["feedback"] = state.get("feedback") or []
+    base["prior_actions"] = state.get("prior_actions") or []
     subq = (state["dispatch"].get("sub_questions") or {})
     return [Send("specialist", {**base, "agent": a, "sub_question": subq.get(a)}) for a in state["merged"]["agents"] if a != "escalation"]
 

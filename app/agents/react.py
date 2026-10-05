@@ -30,7 +30,7 @@ from app.tools.runtime import MAX_CALLS_PER_TOOL, ToolContext, ToolResult, execu
 
 
 UNCERTAIN = re.compile(r"(?:knowledge base|documentation|docs|our (?:records|information)) (?:does not|doesn't|do not|don't|did not|didn't) (?:mention|contain|cover|include|have|list|specif\w+)|"
-                       r"\bnot (?:certain|sure)\b|\b(?:couldn'?t|could not|unable to|can'?t|cannot) (?:find|confirm|verify|locate)\b|\bno (?:relevant )?(?:information|article|details) (?:about|on|available|found)\b|"
+                       r"\bnot (?:certain|sure)\b|\b(?:I|we)(?:'m| am| was)? (?:couldn'?t|could not|unable to|can'?t|cannot|not able to) (?:find|confirm|verify|locate)\b|\bno (?:relevant )?(?:information|article|details) (?:about|on|available|found)\b|"
                        r"\bdon'?t have (?:enough |any |specific )?(?:information|details)\b|"
                        r"\bnot (?:mentioned|listed|documented|covered|specified|stated|included)\b.{0,40}\b(?:knowledge base|documentation|docs|help center|materials)\b|"
                        r"\b(?:no|not any) (?:mention|record|reference) of\b", re.I)

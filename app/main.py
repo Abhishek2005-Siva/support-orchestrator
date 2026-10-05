@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api import auth, demo, health, query, review
+from app.api import auth, data, demo, health, query, review
 from app.core import metrics
 from app.core.config import get_settings
 from app.core.deps import configure_limits
@@ -78,7 +78,7 @@ def create_app(*, use_sqlite_checkpointer: bool = True) -> FastAPI:
         from fastapi.middleware.cors import CORSMiddleware
         app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in s.cors_origins.split(",") if o.strip()], allow_methods=["GET", "POST"],
                            allow_headers=["authorization", "content-type"], expose_headers=["Retry-After", "X-Request-ID"])
-    for r in (auth.router, query.router, review.router, health.router, slack.router, demo.router):
+    for r in (auth.router, query.router, review.router, data.router, health.router, slack.router, demo.router):
         app.include_router(r)
     from fastapi.responses import RedirectResponse
     from fastapi.staticfiles import StaticFiles

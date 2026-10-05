@@ -261,3 +261,40 @@ async def test_stream_trace_for_blocked_input_shows_the_guard_decision(client):
     g = next(e for e in evs if e["phase"] == "end" and e["name"] == "guard.input")
     assert g["output"]["action"] == "refuse" and "prompt_injection" in g["output"]["reasons"]
     assert not any(e["name"] == "agent.dispatcher" for e in evs)         # nothing downstream ran
+
+
+# ---------------- data layer views (policies, tables, knowledge graph) ----------------
+async def test_data_views_are_scoped_and_hide_internal_columns(client):
+    cid = cust("dup_posted"); h = await token(client, cid)
+    ov = (await client.get("/v1/data/overview", headers=h)).json()
+    names = {t["name"]: t for t in ov["tables"]}
+    assert names["transactions"]["scoped"] and 0 < names["transactions"]["rows"] < names["transactions"]["bank_total"]
+    assert not any(c["name"] == "risk_flag" for c in names["customers"]["columns"]) and not any(c["name"] == "score" for c in names["fraud_alerts"]["columns"])
+    assert "api_credentials" not in names and "audit_log" not in names
+    rows = (await client.get("/v1/data/table/transactions?limit=50", headers=h)).json()["rows"]
+    assert rows and {r["customer_id"] for r in rows} == {cid}
+    other = cust("dup_hold")
+    mine = (await client.get(f"/v1/data/table/transactions?limit=5&customer_id={other}", headers=h)).json()["rows"]       # a customer cannot choose another customer
+    assert {r["customer_id"] for r in mine} == {cid}
+    assert (await client.get("/v1/data/table/api_credentials", headers=h)).status_code == 404
+    c = (await client.get("/v1/data/table/customers", headers=h)).json()
+    assert "risk_flag" not in c["columns"] and len(c["rows"]) == 1
+    staff = await token(client, "staff-alice")
+    all_txn = (await client.get(f"/v1/data/table/transactions?limit=5&customer_id={other}", headers=staff)).json()["rows"]
+    assert {r["customer_id"] for r in all_txn} == {other}
+
+
+async def test_policies_and_graph_hide_compliance_rules_from_customers(client):
+    h = await token(client, cust("dup_posted")); staff = await token(client, "staff-alice")
+    pols = (await client.get("/v1/data/policies", headers=h)).json()["policies"]
+    ids = {p["id"] for p in pols}
+    assert "POL-DSP-01" in ids and "POL-AML-01" not in ids and all(p["regulation"] and p["kb_article"] for p in pols if p["id"] != "POL-DSP-03")
+    assert "POL-AML-01" in {p["id"] for p in (await client.get("/v1/data/policies", headers=staff)).json()["policies"]}
+    g = (await client.get("/v1/data/graph?depth=2&txns=8", headers=h)).json()
+    types = {n["type"] for n in g["nodes"]}
+    assert {"customer", "account", "card", "transaction", "policy", "issue", "regulation"} <= types
+    assert not any("aml" in n["id"].lower() for n in g["nodes"]) and all(n["id"].startswith(("cust:CUST-", "acct:", "card:", "txn:", "mer:", "dsp:", "trf:", "issue:", "chk:", "pol:", "reg:", "act:", "kb:")) for n in g["nodes"])
+    me = cust("dup_posted")
+    assert all(n["id"] == f"cust:{me}" for n in g["nodes"] if n["type"] == "customer")          # only the caller's own operational graph
+    foc = (await client.get("/v1/data/graph?focus=issue:duplicate_charge&depth=1&knowledge=true", headers=h)).json()
+    assert any(n["id"] == "act:file_dispute" for n in foc["nodes"])

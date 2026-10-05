@@ -211,6 +211,12 @@ class VerifyArgs(StrictArgs):
 
 
 async def h_verify(ctx: ToolContext, a: VerifyArgs) -> ToolResult:
+    wrote = any(e.get("tool") in ("file_dispute", "reverse_fee", "cancel_transfer", "block_card") for e in ctx.evidence)
+    for e in ctx.evidence:  # idempotent within one query: a re-check after the action must not contradict the verification the action was based on
+        ea = e.get("args") if isinstance(e.get("args"), dict) else {}
+        if e.get("tool") == "verify_transaction_issue" and ea.get("issue_type") == a.issue_type and isinstance(e.get("result"), dict) \
+                and (ea.get("subject_id") == a.subject_id or wrote):          # after an action, any re-check of the same issue returns the one the action was based on
+            return ToolResult(True, e["result"], source=e.get("source"))
     rep, err = await V.verify(ctx.customer_id, ctx.query_id, a.issue_type, a.subject_id, await business_today())
     if err:
         return ToolResult(False, error=err)
@@ -232,8 +238,11 @@ async def h_file_dispute(ctx: ToolContext, a: DisputeArgs) -> ToolResult:
     async with session_scope() as s:
         ex = (await s.execute(select(m.Dispute).where(m.Dispute.txn_id == d.subject_id, m.Dispute.customer_id == ctx.customer_id, m.Dispute.status != "rejected"))).scalars().first()
         if ex:  # G-TOOL-09 idempotent
-            return ToolResult(True, {"dispute_id": ex.id, "status": ex.status, "amount": usd(ex.amount_cents), "note": "a dispute already exists for this transaction"}, source=f"db:dispute:{ex.id}",
-                              requires_human=ex.status == "pending_approval")
+            ev = await s.get(m.Verification, ex.verification_id) if ex.verification_id else None
+            here = bool(ev and ev.query_id == ctx.query_id)
+            return ToolResult(True, {"dispute_id": ex.id, "status": ex.status, "amount": usd(ex.amount_cents),
+                                     "note": "you already filed this dispute earlier in this conversation: it is done, report it" if here else "a dispute already exists for this transaction"},
+                              source=f"db:dispute:{ex.id}", requires_human=ex.status == "pending_approval")
         t = await s.get(m.Transaction, d.subject_id)
         did = await next_id(s, "DSP", 6)
         auto = d.approval == "auto"
