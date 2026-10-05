@@ -83,8 +83,28 @@ const short = (o, n = 70) => { let s = typeof o === "string" ? o : JSON.stringif
 const argSummary = a => { if (!a) return ""; const x = a.args !== undefined ? a.args : a; if (typeof x === "string") return short(x, 60); return Object.entries(x || {}).map(([k, v]) => `${k}=${short(v, 28)}`).join(", "); };
 function llmAgent(n) { const k = n.split(".")[1]; return { dispatcher: "dispatcher", billing: "billing", technical: "technical", general: "general", validator: "validator", escalation: "escalation", safety: "guard", merge: "orch" }[k]; }
 
+const PLAIN_TOOL = { get_invoices: "reading the customer's invoices", get_payment_status: "checking the payment status", get_customer_profile: "looking up the customer's plan", check_refund_eligibility: "asking the refund rule engine (plain code, not AI)", create_refund_request: "filing the refund request", search_knowledge_base: "searching the help articles", get_service_status: "checking if any service is down right now", get_user_logs: "reading the customer's recent error logs", run_diagnostic: "running a diagnostic", create_ticket: "opening a support ticket", get_ticket_history: "reading past tickets", assign_to_human: "assigning the case to a human" };
+function narr(n, text, cls) { const el = $("#narr"); el.hidden = false; el.className = "narr" + (cls ? " " + cls : ""); $("#narr-n").textContent = n; $("#narr-t").innerHTML = text; }
+function narrate(ev) {
+  const n = ev.name || "", o = ev.output || {}, ph = ev.phase;
+  if (ph === "start" && n === "guard.input") narr("Step 1", "Checking the message for attacks and secrets. This uses no AI and takes milliseconds.");
+  else if (ph === "end" && n === "guard.input" && o.action === "refuse") narr("Blocked", "<b>Stopped at the door.</b> This looks like an attack, so no AI agent or tool ever saw it.", "badb");
+  else if (ph === "start" && n === "agent.dispatcher") narr("Step 2", "The <b>router</b> is working out what the customer needs and how urgent it is.");
+  else if (ph === "end" && n === "agent.dispatcher") narr("Step 2", `Understood: <b>${esc((o.intents || []).join(" + ") || "unknown")}</b>, urgency <b>${esc(o.urgency || "?")}</b>. Handing it to the right specialist.`);
+  else if (ph === "start" && ["agent.billing", "agent.technical", "agent.general"].includes(n)) narr("Step 3", `The <b>${n.split(".")[1]} agent</b> is investigating using real account data.`);
+  else if (ph === "start" && ev.kind === "tool") narr("Step 3", `Tool call: ${PLAIN_TOOL[n.slice(5)] || esc(n.slice(5))}.`);
+  else if (ph === "end" && ev.kind === "tool" && n === "tool.check_refund_eligibility" && o.data) narr("Step 3", `Refund rules say: <b>${o.data.eligible ? "eligible" : "not eligible"}</b>. This decision is made by code, never by the AI.`);
+  else if (ph === "start" && n === "agent.escalation") narr("Step 3", "Warning signs found (angry, legal, security or the customer asked for a person). <b>Preparing a human handoff.</b>", "warnb");
+  else if (ph === "start" && n === "agent.validator") narr("Step 4", "The <b>fact-checker</b> is verifying every amount, date and invoice id in the draft against the data.");
+  else if (ph === "end" && n === "agent.validator") o.verdict === "approve" ? narr("Step 5", "<b>Checked and approved.</b> Every fact in the reply matches the data. Sent to the customer.", "good") : narr("Held", "<b>The fact-checker wasn't satisfied</b>, so nothing risky was sent. A human will review it.", "warnb");
+}
+function narrDone(res, scen) {
+  if (res.status === "rejected") narr("Result", "<b>Attack blocked in milliseconds.</b> Nothing was looked up and no money moved. Try 'Someone else's data' or 'SQL injection' next.", "badb");
+  else if (res.status === "human_review") narr("Result", "<b>Handed to a human.</b> Click <b>Human escalation</b> below to see what the specialist sees and approve it.", "warnb");
+  else narr("Result", `<b>Answered in ${(res.latency_ms / 1000).toFixed(1)} s.</b> Click <b>Explain this execution</b> for a plain-English account, or try another scenario below.`, "good");
+}
 function onTrace(ev) {
-  if (!run) return; run.events.push(ev); const n = ev.name || "", t = ev.t;
+  if (!run) return; run.events.push(ev); const n = ev.name || "", t = ev.t; narrate(ev);
   if (ev.phase === "start") {
     if (n === "guard.input") { setNode("guard", "active", "checking"); flow("orch", "guard"); tline(t, "▶", "Input guard started: sanitise, mask secrets, injection checks"); }
     else if (n === "guard.safety_model") { setNode("guard", "active", "safety model"); }
@@ -235,7 +255,7 @@ async function send(text, scen) {
     tline(res.latency_ms, res.status === "delivered" ? "🏁" : res.status === "rejected" ? "⛔" : "🧑‍💼", `Result: <b>${esc(lab[0])}</b> in ${fmt(res.latency_ms)}`, res.status === "delivered" ? "ok" : res.status === "rejected" ? "bad" : "warn");
     if (res.status === "rejected") setNode("orch", "done", "stopped"); else setNode("orch", "done", "complete");
     if (res.status === "human_review") setNode("human", "waiting", "awaiting human");
-    run.checks.final = res; $("#explain").disabled = false; const needsHuman = res.status === "human_review" || res.flags?.requires_human_approval; $("#esc").disabled = !needsHuman; $("#esc-n").hidden = !needsHuman;
+    narrDone(res, scen); run.checks.final = res; $("#explain").disabled = false; const needsHuman = res.status === "human_review" || res.flags?.requires_human_approval; $("#esc").disabled = !needsHuman; $("#esc-n").hidden = !needsHuman;
     renderState(); renderSec(); renderTools(); if (needsHuman) { watch(res, cid); toast("Escalated: open the Human escalation desk"); }
   } catch (e) {
     clearInterval(run?.timer); pend.className = "msg bot block"; pend.innerHTML = e.status === 429 ? `Too many requests. Try again in ${esc(e.retry || 60)} s.` : "Something went wrong: " + esc(e.message); if (run) setNode("orch", "blocked", "error");
@@ -268,6 +288,7 @@ async function runScenario(s, btn) {
 /* =============== scheduler =============== */
 const SCH = { on: false, ids: [] };
 const waitIdle = async () => { while (S.busy) await sleep(300); };
+const waitIdleReady = async () => { while (S.busy || !S.cur) await sleep(300); };
 async function schLoop() {
   SCH.on = true; $("#sched").classList.add("on"); $("#sched").textContent = "Scheduled ●";
   do {
@@ -375,7 +396,13 @@ async function boot() {
   buildNet(); buildScenarios(); buildDesign(); initSchedule(); renderSec(); renderState(); renderAgents();
   $("#nav").onclick = e => { const b = e.target.closest("button"); if (b) view(b.dataset.v); };
   $("#composer").onsubmit = e => { e.preventDefault(); send($("#msg").value); }; $("#msg").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("#msg").value); } }); $("#msg").addEventListener("input", grow);
-  $("#how").onclick = () => $("#dlg-how").showModal(); $$("[data-close]").forEach(b => b.onclick = () => b.closest("dialog").close()); $("#explain").onclick = explain; $("#esc").onclick = openDesk; $("#dclose2").onclick = () => $("#drawer").hidden = true;
+  const intro = $("#intro"), closeIntro = () => { intro.hidden = true; try { sessionStorage.setItem("seen", "1"); } catch (e) { } };
+  $("#how").onclick = () => { intro.hidden = false; };
+  $("#i-try").onclick = () => { closeIntro(); $("#msg").focus(); };
+  const play = id => async () => { closeIntro(); const s = SCENARIOS.find(x => x.id === id); await waitIdleReady(); runScenario(s, $$(".sbtn").find(b => b.dataset.id === id)); };
+  $("#i-demo").onclick = play("dup"); $("#i-attack").onclick = play("inj");
+  try { if (!sessionStorage.getItem("seen")) intro.hidden = false; } catch (e) { intro.hidden = false; }
+ $$("[data-close]").forEach(b => b.onclick = () => b.closest("dialog").close()); $("#explain").onclick = explain; $("#esc").onclick = openDesk; $("#dclose2").onclick = () => $("#drawer").hidden = true;
   $("#qrefresh").onclick = loadQueue; $("#qf").onclick = e => { const b = e.target.closest("button"); if (!b) return; S.qfilter = b.dataset.s; $$("#qf button").forEach(x => x.classList.toggle("on", x === b)); loadQueue(); };
   $("#acct").onchange = e => useAccount(S.accounts.find(a => a.client_id === e.target.value));
   setInterval(() => { if (!$("#v-queue").hidden) loadQueue(); }, 12000);

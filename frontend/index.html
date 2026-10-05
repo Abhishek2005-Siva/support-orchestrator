@@ -10,7 +10,7 @@
 </head>
 <body>
 <header>
-  <div class="brand"><span class="logo"></span><b>Orbit Support</b><span class="sub">AI customer support · agent console</span></div>
+  <div class="brand"><span class="logo"></span><b>Orbit Support</b><span class="sub">AI customer support that checks its own work</span></div>
   <nav id="nav">
     <button data-v="console" class="on">Console</button>
     <button data-v="design">Scope &amp; design</button>
@@ -19,28 +19,29 @@
   <div class="grow"></div>
   <label class="acct" id="acct-wrap" hidden title="Who is logged in. The agent knows this from the login, like a real support portal. It works out WHAT the problem is from the message.">signed in as <select id="acct"></select></label>
   <span class="live" id="live"><i></i><span id="live-t">connecting…</span></span>
-  <button id="how" class="ghost">How it works</button>
+  <button id="how" class="ghost">What is this?</button>
 </header>
 
+<div id="narr" class="narr" hidden><span class="narr-n" id="narr-n"></span><span id="narr-t"></span></div>
 <!-- ============ CONSOLE ============ -->
 <main id="v-console" class="console">
-  <section class="panel p-chat"><h3>Customer conversation <small id="who"></small></h3>
+  <section class="panel p-chat"><h3>Customer conversation <small id="who"></small></h3><p class="pd">What the customer sees.</p>
     <div id="thread" class="thread"></div>
     <form id="composer" class="composer"><textarea id="msg" rows="1" maxlength="2000" placeholder="Type as the customer…"></textarea><button id="send" class="btn">Send</button></form>
   </section>
 
-  <section class="panel p-net"><h3>Agent network <small id="net-hint">idle: send a message or pick a scenario</small></h3>
+  <section class="panel p-net"><h3>Agent network <small id="net-hint">idle: send a message or pick a scenario</small></h3><p class="pd">Who is working right now. Green = done, blue = thinking, amber = waiting for a human, red = blocked.</p>
     <svg id="net" viewBox="0 0 820 430" preserveAspectRatio="xMidYMid meet"></svg>
   </section>
 
-  <section class="panel p-state"><h3>System state</h3>
+  <section class="panel p-state"><h3>System state</h3><p class="pd">What the AI understood.</p>
     <div id="state" class="state"></div>
     <h3 class="sp">Agent state</h3><div id="agents" class="agents"></div>
   </section>
 
-  <section class="panel p-trace"><h3>Live execution trace <small id="tr-total"></small></h3><div id="trace" class="trace"><p class="empty">Nothing yet. Events appear here as agents work.</p></div></section>
-  <section class="panel p-tools"><h3>Tool calls <small id="tl-total"></small></h3><div id="tools" class="tools"><p class="empty">No tool calls yet.</p></div></section>
-  <section class="panel p-sec"><h3>Security &amp; policy layer</h3><div id="sec" class="sec"></div></section>
+  <section class="panel p-trace"><h3>Live execution trace <small id="tr-total"></small></h3><p class="pd">Step-by-step log of everything it did.</p><div id="trace" class="trace"><p class="empty">Nothing yet. Events appear here as agents work.</p></div></section>
+  <section class="panel p-tools"><h3>Tool calls <small id="tl-total"></small></h3><p class="pd">The real data it looked up (click one to open).</p><div id="tools" class="tools"><p class="empty">No tool calls yet.</p></div></section>
+  <section class="panel p-sec"><h3>Security &amp; policy layer</h3><p class="pd">Safety checks that run on every message.</p><div id="sec" class="sec"></div></section>
 
   <section class="bar">
     <div class="scen" id="scen"></div>
@@ -80,6 +81,27 @@
   <li><b>Validator</b> re-checks every amount, date, id and claim against the evidence; unsupported answers are revised or held.</li>
   <li><b>Human desk</b> handles escalations and approvals; the graph pauses until a person decides.</li></ol>
   <p class="muted">Synthetic data. The free model endpoint makes answers take several seconds.</p><button class="btn" data-close>Got it</button></div></dialog>
+<section id="intro" class="intro" hidden><div class="intro-in">
+  <p class="eyebrow">Orbit Support · a demo project</p>
+  <h1>An AI customer-support team that checks its own work</h1>
+  <p class="lead">Customers write in. AI agents look up their <b>real account data</b>, decide what to do and reply. A fact-checker verifies every reply <b>before it is sent</b>. Risky cases (big refunds, angry customers, hacking attempts) are blocked or handed to a human.</p>
+  <div class="flow">
+    <div><b>1</b>Customer<br>writes in</div><i>→</i>
+    <div><b>2</b>Security<br>check</div><i>→</i>
+    <div><b>3</b>AI agents<br>look up data</div><i>→</i>
+    <div><b>4</b>Fact-checker<br>verifies</div><i>→</i>
+    <div class="ok"><b>5</b>Reply sent</div>
+    <div class="or">or, if risky ↓</div><div class="warn"><b>🧑</b>A human decides</div>
+  </div>
+  <div class="why">
+    <div><b>Never invents numbers</b>Every amount, date and invoice id in a reply is checked against the data.</div>
+    <div><b>Can't be tricked</b>Money rules are code, not AI. 58 of 58 attack attempts in testing ended safely.</div>
+    <div><b>Humans stay in charge</b>Refunds over $100 and angry customers wait for a person.</div>
+  </div>
+  <div class="nums"><div><b>90%</b>correct on unseen test cases</div><div><b>58/58</b>attacks blocked</div><div><b>50</b>safety checks</div><div><b>~8 s</b>per reply (free AI tier)</div></div>
+  <div class="cta"><button class="btn big" id="i-demo">▶ Watch it handle a duplicate charge</button><button class="btn big alt" id="i-attack">🛡 Watch an attack get blocked</button><button class="ghost" id="i-try">Try it myself</button></div>
+  <p class="muted">Fake data only. The first request can take up to a minute while the free server wakes up.</p>
+</div></section>
 <div id="toast" class="toast" hidden></div>
 <script src="config.js"></script>
 <script src="scenarios.js"></script>

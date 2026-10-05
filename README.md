@@ -5,7 +5,11 @@
 **[Live console](https://orbit-support-ui.vercel.app)** (Vercel) · **[API](https://orbit-support.onrender.com/docs)** (Render) · all data is synthetic
 > Free tier: the first request after idle takes 30-60 s to wake. Answers take ~8 s because the free NVIDIA endpoint is slow.
 
-![Console: a duplicate-charge refund handled live](docs/img/console.png)
+**New here?** Open the live console. A one-screen intro explains the project in plain English, and one click plays a real duplicate-charge case with a bar that narrates each step.
+
+![Intro screen](docs/img/intro.png)
+
+![Console: a duplicate-charge refund handled live, with step narration](docs/img/console.png)
 
 ## What it is
 
@@ -82,7 +86,7 @@ python scripts/trace_view.py --last 3      # where the time went, per node
 
 ## Try it
 
-1. Open the [console](https://orbit-support-ui.vercel.app), pick a login, and write anything. The agent works out the problem from your message, not from the login.
+1. Open the [console](https://orbit-support-ui.vercel.app) and press **Watch it handle a duplicate charge** ("What is this?" reopens the intro). Or pick a login and write anything. The agent works out the problem from your message, not from the login.
 2. Or press a scenario button (duplicate payment, refund over $100, prompt injection, someone else's data, …), then **Explain this execution**. **Schedule** auto-plays scenarios on an interval.
 3. Run it locally, configure it or deploy your own: [`docs/reference.md`](docs/reference.md).
 
